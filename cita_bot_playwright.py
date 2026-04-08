@@ -37,7 +37,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 WIDGET_URL = "https://www.citaconsular.es/es/hosteds/widgetdefault/2846ed4c1563cb7e2bdfea65b41ebdd55/"
 SERVICIO = "Registro Civil"
 POLL_INTERVAL = 300  # 5 minutos entre intentos
-MOSTRAR_NAVEGADOR = True
+MOSTRAR_NAVEGADOR = os.environ.get("SHOW_BROWSER", "false").lower() == "true"
 
 # Google Sheets - exportar como CSV
 GOOGLE_SHEET_ID = "1W2x9gyZSHNFraiPxI7ucpNeTyWNuk0fDePV96AiNLAs"
@@ -813,7 +813,10 @@ def main():
     except Exception as e:
         log.error(f"Error: {e}", exc_info=True)
     finally:
-        input("\nPresioná Enter para cerrar...")
+        if os.environ.get("RAILWAY_ENVIRONMENT"):
+            log.info("Cerrando bot...")
+        else:
+            input("\nPresioná Enter para cerrar...")
         bot.cerrar_browser()
 
 
