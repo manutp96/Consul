@@ -7,3 +7,4 @@ reservados.json
 .env
 .env.*
 !.env.example
+google_credentials.json

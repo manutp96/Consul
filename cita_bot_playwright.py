@@ -109,6 +109,66 @@ def guardar_reservado(cliente: Cliente, fecha_cita: str = ""):
         json.dump(reservados, f, indent=2, ensure_ascii=False)
     log.info(f"Reserva guardada localmente: {cliente.nombre}")
 
+    # Actualizar Google Sheets (columnas G y H)
+    actualizar_google_sheet(cliente, fecha_cita)
+
+
+def actualizar_google_sheet(cliente: Cliente, fecha_cita: str = ""):
+    """Escribe APROBADO en columna G y la fecha/hora en columna H del Google Sheet."""
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+
+        # Credenciales desde variable de entorno o archivo
+        creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
+        creds_file = SCRIPT_DIR / "google_credentials.json"
+
+        if creds_json:
+            import json as json_mod
+            creds_data = json_mod.loads(creds_json)
+            creds = Credentials.from_service_account_info(
+                creds_data,
+                scopes=["https://www.googleapis.com/auth/spreadsheets"]
+            )
+        elif creds_file.exists():
+            creds = Credentials.from_service_account_file(
+                str(creds_file),
+                scopes=["https://www.googleapis.com/auth/spreadsheets"]
+            )
+        else:
+            log.warning("No se encontraron credenciales de Google. No se puede actualizar el Sheet.")
+            return
+
+        gc = gspread.authorize(creds)
+        sheet = gc.open_by_key(GOOGLE_SHEET_ID).sheet1
+
+        # Buscar la fila del cliente por nombre (columna A)
+        nombres = sheet.col_values(1)  # Columna A
+        fila = None
+        for i, nombre in enumerate(nombres):
+            if nombre.strip().upper() == cliente.nombre.strip().upper():
+                fila = i + 1  # gspread usa 1-indexed
+                break
+
+        if not fila:
+            # Intentar por fila guardada en el cliente
+            fila = cliente.fila
+
+        if fila:
+            # Columna G (7) = APROBADO
+            sheet.update_cell(fila, 7, "APROBADO")
+            # Columna H (8) = fecha y hora del tramite
+            fecha_hora = fecha_cita if fecha_cita and fecha_cita != "CONFIRMADA" else datetime.now().strftime("%d/%m/%Y %H:%M")
+            sheet.update_cell(fila, 8, fecha_hora)
+            log.info(f"Google Sheet actualizado: fila {fila} -> APROBADO | {fecha_hora}")
+        else:
+            log.warning(f"No se encontro la fila de {cliente.nombre} en el Sheet")
+
+    except ImportError:
+        log.warning("gspread no instalado. No se puede actualizar Google Sheet.")
+    except Exception as e:
+        log.error(f"Error actualizando Google Sheet: {e}")
+
 
 def leer_clientes_google_sheets() -> list:
     """Lee los clientes pendientes directamente de Google Sheets."""
@@ -149,8 +209,8 @@ def leer_clientes_google_sheets() -> list:
 
         # Verificar si ya está en la columna "estado" de la hoja
         estado_hoja = (row.get(COL_ESTADO) or "").strip().upper()
-        if "RESERVADO" in estado_hoja:
-            log.info(f"  Saltando {nombre} (marcado RESERVADO en hoja)")
+        if estado_hoja:  # Si estado tiene cualquier valor (APROBADO, RESERVADO, etc), saltar
+            log.info(f"  Saltando {nombre} (estado: {estado_hoja})")
             continue
 
         # Verificar si ya está en nuestro registro local (por nombre)
