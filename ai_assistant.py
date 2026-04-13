@@ -232,3 +232,145 @@ async def responder(pregunta: str, plataforma: str = "discord") -> str | list:
         return formatear_respuesta_whatsapp(respuesta)
     else:
         return respuesta
+
+
+# ============================================================================
+# PROCESAMIENTO DE MENSAJES NATURALES (mencion @bot)
+# ============================================================================
+
+async def procesar_mensaje_natural(mensaje: str, usuario: str) -> dict:
+    """
+    Procesa un mensaje en lenguaje natural dirigido al bot.
+    Detecta la intencion (consulta, guardar info, corregir) y actua.
+
+    Retorna: {"tipo": "respuesta|guardado|correccion|error", "texto": "...", "datos": {...}}
+    """
+    from kb_manager import agregar_nota, agregar_info, corregir_tramite
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        return {"tipo": "error", "texto": "API de IA no configurada."}
+
+    if not _check_rate_limit():
+        return {"tipo": "error", "texto": "Limite de consultas alcanzado. Intenta en unos segundos."}
+
+    try:
+        import anthropic
+        import json as json_module
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+
+        system = get_system_prompt()
+        system += """
+
+INSTRUCCIONES ADICIONALES PARA MENSAJES CONVERSACIONALES:
+
+Eres un asistente de Discord. Los empleados te etiquetan y te hablan en lenguaje natural.
+Debes detectar que quiere el usuario y responder con un JSON seguido de tu respuesta.
+
+SIEMPRE responde con este formato exacto (la primera linea DEBE ser JSON valido):
+{"accion": "consulta|guardar|corregir|clientes|estado", "categoria": "", "tramite_id": "", "nombre": "", "descripcion": "", "nota": "", "campo": "", "valor": ""}
+
+Seguido de una linea vacia y luego tu respuesta en texto natural.
+
+REGLAS:
+- Si el usuario PREGUNTA algo sobre tramites → accion: "consulta"
+- Si el usuario quiere GUARDAR/AGREGAR/ANOTAR informacion nueva → accion: "guardar", con categoria, nombre/nota
+- Si el usuario quiere CORREGIR/CAMBIAR/ACTUALIZAR un tramite → accion: "corregir", con tramite_id, campo, valor
+- Si pregunta por clientes pendientes → accion: "clientes"
+- Si pregunta por estado del bot → accion: "estado"
+
+EJEMPLOS:
+Usuario: "que necesito para renovar el pasaporte?"
+{"accion": "consulta", "categoria": "", "tramite_id": "", "nombre": "", "descripcion": "", "nota": "", "campo": "", "valor": ""}
+
+(respuesta sobre pasaportes)
+
+Usuario: "guarda que ahora el consulado pide cedula vigente para pasaportes"
+{"accion": "guardar", "categoria": "", "tramite_id": "5.1", "nombre": "", "descripcion": "", "nota": "Desde 2026 el consulado pide cedula vigente para pasaportes", "campo": "", "valor": ""}
+
+Listo! Guarde la nota en el tramite 5.1 (Pasaportes).
+
+Usuario: "corregí la descripcion del tramite 1.1, ahora dice que los dos padres deben firmar"
+{"accion": "corregir", "categoria": "", "tramite_id": "1.1", "nombre": "", "descripcion": "", "nota": "", "campo": "descripcion", "valor": "Inscripcion en el Registro Civil espanol. Ambos progenitores deben firmar la hoja declaratoria."}
+
+Listo! Corregi la descripcion del tramite 1.1 (Nacimientos)."""
+
+        log.info(f"Mensaje natural de {usuario}: {mensaje[:80]}")
+
+        response = await client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1500,
+            system=system,
+            messages=[{"role": "user", "content": mensaje}]
+        )
+
+        respuesta_completa = response.content[0].text.strip()
+
+        # Parsear la primera linea como JSON
+        lineas = respuesta_completa.split("\n", 1)
+        primera_linea = lineas[0].strip()
+        texto_respuesta = lineas[1].strip() if len(lineas) > 1 else ""
+
+        try:
+            datos = json_module.loads(primera_linea)
+        except json_module.JSONDecodeError:
+            # Si no pudo parsear JSON, es solo una respuesta de texto
+            return {"tipo": "respuesta", "texto": respuesta_completa}
+
+        accion = datos.get("accion", "consulta")
+
+        if accion == "guardar":
+            # Guardar nota o info nueva
+            tramite_id = datos.get("tramite_id", "")
+            nota = datos.get("nota", "")
+            nombre = datos.get("nombre", "")
+            descripcion = datos.get("descripcion", "")
+            categoria = datos.get("categoria", "")
+
+            if tramite_id and nota:
+                resultado = agregar_nota(tramite_id, nota, usuario)
+                if resultado["ok"]:
+                    return {"tipo": "guardado", "texto": texto_respuesta or f"Nota guardada en tramite {tramite_id}.", "datos": resultado}
+                else:
+                    return {"tipo": "error", "texto": f"No pude guardar: {resultado['error']}"}
+            elif categoria and nombre and descripcion:
+                resultado = agregar_info(categoria, {"nombre": nombre, "descripcion": descripcion}, usuario)
+                if resultado["ok"]:
+                    return {"tipo": "guardado", "texto": texto_respuesta or f"Tramite agregado con ID {resultado['id']}.", "datos": resultado}
+                else:
+                    return {"tipo": "error", "texto": f"No pude agregar: {resultado['error']}"}
+            elif nota:
+                # Si hay nota pero no tramite_id, buscar el tramite mas relevante
+                resultados = buscar_tramite_local(nota)
+                if resultados:
+                    tid = resultados[0]["tramite"]["id"]
+                    resultado = agregar_nota(tid, nota, usuario)
+                    if resultado["ok"]:
+                        return {"tipo": "guardado", "texto": texto_respuesta or f"Nota guardada en tramite {tid} ({resultados[0]['tramite']['nombre']}).", "datos": resultado}
+                return {"tipo": "respuesta", "texto": texto_respuesta or "No pude determinar donde guardar esa informacion. Intenta especificar el tramite."}
+
+        elif accion == "corregir":
+            tramite_id = datos.get("tramite_id", "")
+            campo = datos.get("campo", "")
+            valor = datos.get("valor", "")
+            if tramite_id and campo and valor:
+                resultado = corregir_tramite(tramite_id, {campo: valor}, usuario)
+                if resultado["ok"]:
+                    return {"tipo": "correccion", "texto": texto_respuesta or f"Tramite {tramite_id} corregido.", "datos": resultado}
+                else:
+                    return {"tipo": "error", "texto": f"No pude corregir: {resultado['error']}"}
+            return {"tipo": "respuesta", "texto": texto_respuesta or "No pude determinar que corregir. Especifica el ID del tramite, campo y nuevo valor."}
+
+        elif accion == "clientes":
+            return {"tipo": "clientes", "texto": texto_respuesta}
+
+        elif accion == "estado":
+            return {"tipo": "estado", "texto": texto_respuesta}
+
+        else:
+            # Consulta normal
+            return {"tipo": "respuesta", "texto": texto_respuesta or respuesta_completa}
+
+    except Exception as e:
+        log.error(f"Error en mensaje natural: {e}")
+        return {"tipo": "error", "texto": "Hubo un error procesando tu mensaje. Intenta de nuevo."}
