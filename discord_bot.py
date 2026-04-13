@@ -1,0 +1,588 @@
+"""
+Bot de Discord para RH Tramites Consulares
+===========================================
+
+Slash commands para consultar tramites, ver clientes y estado del bot.
+Comandos de gestion para agregar/corregir info en la base de datos.
+Sistema de feedback con reacciones para auto-correccion.
+"""
+
+import asyncio
+import logging
+import os
+import queue
+from datetime import datetime, timedelta
+
+import discord
+from discord import app_commands
+
+from ai_assistant import responder, buscar_tramite_local, formatear_resultado_local
+from kb_manager import agregar_info, corregir_tramite, agregar_nota, guardar_feedback
+
+log = logging.getLogger("Discord")
+
+DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
+DISCORD_CHANNEL_ID = int(os.environ.get("DISCORD_CHANNEL_ID", "0"))
+DISCORD_GUILD_ID = os.environ.get("DISCORD_GUILD_ID", "")
+
+
+# ============================================================================
+# BOT DE DISCORD
+# ============================================================================
+
+class ConsularBot(discord.Client):
+    def __init__(self, notification_queue: queue.Queue = None, cita_bot_estado: dict = None):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(intents=intents)
+        self.tree = app_commands.CommandTree(self)
+        self.notification_queue = notification_queue
+        self.cita_bot_estado = cita_bot_estado or {}
+        self._pending_feedback = {}  # message_id -> {pregunta, respuesta, usuario, timestamp, estado}
+        self._setup_commands()
+
+    def _setup_commands(self):
+        """Registra los slash commands."""
+
+        # ==============================================================
+        # CONSULTAS
+        # ==============================================================
+
+        @self.tree.command(
+            name="tramite",
+            description="Consultar informacion sobre un tramite consular"
+        )
+        @app_commands.describe(consulta="Que tramite necesitas? Ej: pasaporte, nacimiento, nacionalidad")
+        async def cmd_tramite(interaction: discord.Interaction, consulta: str):
+            await interaction.response.defer(thinking=True)
+            log.info(f"Consulta de {interaction.user}: {consulta}")
+
+            try:
+                respuesta_chunks = await responder(consulta, plataforma="discord")
+
+                if isinstance(respuesta_chunks, list):
+                    msg = await interaction.followup.send(respuesta_chunks[0], wait=True)
+                    for chunk in respuesta_chunks[1:]:
+                        await interaction.channel.send(chunk)
+                else:
+                    msg = await interaction.followup.send(respuesta_chunks, wait=True)
+
+                # Agregar reacciones de feedback
+                try:
+                    await msg.add_reaction("\U0001f44d")  # 👍
+                    await msg.add_reaction("\U0001f44e")  # 👎
+                    self._pending_feedback[msg.id] = {
+                        "pregunta": consulta,
+                        "respuesta": respuesta_chunks[0] if isinstance(respuesta_chunks, list) else respuesta_chunks,
+                        "usuario": str(interaction.user),
+                        "timestamp": datetime.now(),
+                        "estado": "esperando_reaccion"
+                    }
+                except Exception as e:
+                    log.warning(f"No se pudieron agregar reacciones: {e}")
+
+            except Exception as e:
+                log.error(f"Error en /tramite: {e}")
+                await interaction.followup.send(
+                    "Hubo un error procesando tu consulta. Intenta de nuevo."
+                )
+
+        @self.tree.command(
+            name="buscar",
+            description="Busqueda rapida de tramite (sin IA)"
+        )
+        @app_commands.describe(query="Palabra clave: pasaporte, nacimiento, divorcio, etc.")
+        async def cmd_buscar(interaction: discord.Interaction, query: str):
+            log.info(f"Busqueda local de {interaction.user}: {query}")
+
+            resultados = buscar_tramite_local(query)
+
+            if not resultados:
+                await interaction.response.send_message(
+                    f"No encontre tramites para '{query}'. "
+                    f"Proba con `/tramite {query}` para una busqueda con IA."
+                )
+                return
+
+            embed = discord.Embed(
+                title=f"Resultados para: {query}",
+                color=discord.Color.blue()
+            )
+
+            for r in resultados[:3]:
+                tramite = r["tramite"]
+                desc = tramite.get("descripcion", "")[:200]
+                if len(tramite.get("descripcion", "")) > 200:
+                    desc += "..."
+                embed.add_field(
+                    name=f"{tramite['id']} - {tramite['nombre']}",
+                    value=f"*{r['categoria']}*\n{desc}",
+                    inline=False
+                )
+
+            embed.set_footer(text="Usa /tramite para una respuesta detallada con IA")
+            await interaction.response.send_message(embed=embed)
+
+        # ==============================================================
+        # GESTION DE BASE DE DATOS
+        # ==============================================================
+
+        @self.tree.command(
+            name="agregar",
+            description="Agregar un nuevo tramite a la base de datos"
+        )
+        @app_commands.describe(
+            categoria="Categoria: Familia, Certificados, Nacionalidad, Pasaportes, Notaria, Visados, etc.",
+            nombre="Nombre del tramite",
+            descripcion="Descripcion del tramite"
+        )
+        async def cmd_agregar(interaction: discord.Interaction, categoria: str, nombre: str, descripcion: str):
+            log.info(f"Agregar por {interaction.user}: {categoria} / {nombre}")
+
+            resultado = agregar_info(
+                categoria_nombre=categoria,
+                info={"nombre": nombre, "descripcion": descripcion},
+                usuario=str(interaction.user)
+            )
+
+            if resultado["ok"]:
+                embed = discord.Embed(
+                    title="Tramite Agregado",
+                    color=discord.Color.green()
+                )
+                embed.add_field(name="ID", value=resultado["id"], inline=True)
+                embed.add_field(name="Nombre", value=nombre, inline=True)
+                embed.add_field(name="Categoria", value=categoria, inline=True)
+                embed.add_field(name="Descripcion", value=descripcion[:200], inline=False)
+                embed.set_footer(text=f"Por {interaction.user}")
+                await interaction.response.send_message(embed=embed)
+            else:
+                await interaction.response.send_message(
+                    f"Error: {resultado['error']}", ephemeral=True
+                )
+
+        @self.tree.command(
+            name="corregir",
+            description="Corregir informacion de un tramite existente"
+        )
+        @app_commands.describe(
+            tramite_id="ID del tramite. Ej: 1.1, 5.1, 4.2",
+            campo="Campo a corregir",
+            valor="Nuevo valor"
+        )
+        @app_commands.choices(campo=[
+            app_commands.Choice(name="Descripcion", value="descripcion"),
+            app_commands.Choice(name="Procedimiento", value="procedimiento"),
+            app_commands.Choice(name="Quien puede solicitarlo", value="quien_puede_solicitarlo"),
+        ])
+        async def cmd_corregir(interaction: discord.Interaction, tramite_id: str, campo: app_commands.Choice[str], valor: str):
+            log.info(f"Corregir por {interaction.user}: {tramite_id}.{campo.value}")
+
+            resultado = corregir_tramite(
+                tramite_id=tramite_id,
+                correccion={campo.value: valor},
+                usuario=str(interaction.user)
+            )
+
+            if resultado["ok"]:
+                embed = discord.Embed(
+                    title="Tramite Corregido",
+                    color=discord.Color.orange()
+                )
+                embed.add_field(name="Tramite", value=tramite_id, inline=True)
+                embed.add_field(name="Campo", value=campo.name, inline=True)
+                embed.add_field(name="Nuevo valor", value=valor[:200], inline=False)
+                embed.set_footer(text=f"Por {interaction.user}")
+                await interaction.response.send_message(embed=embed)
+            else:
+                await interaction.response.send_message(
+                    f"Error: {resultado['error']}", ephemeral=True
+                )
+
+        @self.tree.command(
+            name="notas",
+            description="Agregar una nota a un tramite"
+        )
+        @app_commands.describe(
+            tramite_id="ID del tramite. Ej: 1.1, 5.1, 4.2",
+            nota="Nota o informacion adicional"
+        )
+        async def cmd_notas(interaction: discord.Interaction, tramite_id: str, nota: str):
+            log.info(f"Nota por {interaction.user}: {tramite_id}")
+
+            resultado = agregar_nota(
+                tramite_id=tramite_id,
+                nota=nota,
+                usuario=str(interaction.user)
+            )
+
+            if resultado["ok"]:
+                embed = discord.Embed(
+                    title="Nota Agregada",
+                    color=discord.Color.teal()
+                )
+                embed.add_field(name="Tramite", value=tramite_id, inline=True)
+                embed.add_field(name="Nota", value=nota[:200], inline=False)
+                embed.set_footer(text=f"Por {interaction.user}")
+                await interaction.response.send_message(embed=embed)
+            else:
+                await interaction.response.send_message(
+                    f"Error: {resultado['error']}", ephemeral=True
+                )
+
+        # ==============================================================
+        # MONITOREO
+        # ==============================================================
+
+        @self.tree.command(
+            name="clientes",
+            description="Ver clientes pendientes de cita"
+        )
+        async def cmd_clientes(interaction: discord.Interaction):
+            await interaction.response.defer(thinking=True)
+            log.info(f"Consulta de clientes por {interaction.user}")
+
+            try:
+                from cita_bot_playwright import leer_clientes_google_sheets
+                clientes = leer_clientes_google_sheets()
+
+                if not clientes:
+                    await interaction.followup.send(
+                        "No hay clientes pendientes en la hoja de Google Sheets."
+                    )
+                    return
+
+                embed = discord.Embed(
+                    title=f"Clientes Pendientes ({len(clientes)})",
+                    color=discord.Color.orange()
+                )
+
+                for i, c in enumerate(clientes[:10], 1):
+                    embed.add_field(
+                        name=f"{i}. {c.nombre}",
+                        value=f"Email: {c.email}\nTramite: {c.tramite}",
+                        inline=False
+                    )
+
+                if len(clientes) > 10:
+                    embed.set_footer(text=f"... y {len(clientes) - 10} mas")
+
+                await interaction.followup.send(embed=embed)
+
+            except Exception as e:
+                log.error(f"Error en /clientes: {e}")
+                await interaction.followup.send("Error al obtener la lista de clientes.")
+
+        @self.tree.command(
+            name="estado",
+            description="Estado actual del bot de citas"
+        )
+        async def cmd_estado(interaction: discord.Interaction):
+            log.info(f"Consulta de estado por {interaction.user}")
+
+            estado = self.cita_bot_estado
+
+            embed = discord.Embed(
+                title="Estado del Bot de Citas",
+                color=discord.Color.green() if estado.get("activo") else discord.Color.red()
+            )
+            embed.add_field(name="Estado", value="Activo" if estado.get("activo") else "Inactivo", inline=True)
+            embed.add_field(name="Ciclo actual", value=str(estado.get("ciclo", 0)), inline=True)
+            embed.add_field(name="Ultimo intento", value=estado.get("ultimo_intento", "N/A"), inline=True)
+            embed.add_field(name="Ultima reserva", value=estado.get("ultima_reserva", "Ninguna aun"), inline=True)
+            embed.add_field(name="Servicio", value=estado.get("servicio", "Registro Civil"), inline=True)
+
+            await interaction.response.send_message(embed=embed)
+
+        # ==============================================================
+        # AYUDA
+        # ==============================================================
+
+        @self.tree.command(
+            name="ayuda",
+            description="Mostrar comandos disponibles"
+        )
+        async def cmd_ayuda(interaction: discord.Interaction):
+            embed = discord.Embed(
+                title="RH Tramites Consulares - Bot de Discord",
+                description="Comandos disponibles:",
+                color=discord.Color.gold()
+            )
+            embed.add_field(
+                name="--- CONSULTAS ---",
+                value="\u200b",
+                inline=False
+            )
+            embed.add_field(
+                name="/tramite <consulta>",
+                value="Consultar con IA. Ej: `/tramite que necesito para renovar pasaporte`",
+                inline=False
+            )
+            embed.add_field(
+                name="/buscar <palabra>",
+                value="Busqueda rapida por keyword. Ej: `/buscar nacimiento`",
+                inline=False
+            )
+            embed.add_field(
+                name="--- GESTION ---",
+                value="\u200b",
+                inline=False
+            )
+            embed.add_field(
+                name="/agregar <categoria> <nombre> <descripcion>",
+                value="Agregar nuevo tramite a la base de datos",
+                inline=False
+            )
+            embed.add_field(
+                name="/corregir <tramite_id> <campo> <valor>",
+                value="Corregir info de un tramite. Ej: `/corregir 5.1 descripcion 'nuevo texto'`",
+                inline=False
+            )
+            embed.add_field(
+                name="/notas <tramite_id> <nota>",
+                value="Agregar nota a un tramite. Ej: `/notas 5.1 El plazo actual es 8 semanas`",
+                inline=False
+            )
+            embed.add_field(
+                name="--- MONITOREO ---",
+                value="\u200b",
+                inline=False
+            )
+            embed.add_field(name="/clientes", value="Ver clientes pendientes de cita", inline=False)
+            embed.add_field(name="/estado", value="Ver estado actual del bot de citas", inline=False)
+            embed.add_field(
+                name="--- FEEDBACK ---",
+                value="Despues de cada respuesta de /tramite, reacciona con \U0001f44d o \U0001f44e.\n"
+                      "Si reaccionas \U0001f44e, el bot te preguntara que estuvo mal para aprender.",
+                inline=False
+            )
+
+            embed.set_footer(text="RH Tramites Consulares | WhatsApp: +598 91 090 980")
+            await interaction.response.send_message(embed=embed)
+
+    # ==================================================================
+    # SETUP & EVENTS
+    # ==================================================================
+
+    async def setup_hook(self):
+        """Sincroniza los slash commands al arrancar."""
+        if DISCORD_GUILD_ID:
+            guild = discord.Object(id=int(DISCORD_GUILD_ID))
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            log.info(f"Comandos sincronizados con guild {DISCORD_GUILD_ID}")
+        else:
+            await self.tree.sync()
+            log.info("Comandos sincronizados globalmente (puede tardar hasta 1 hora)")
+
+        # Tarea de limpieza de feedback viejo
+        self.loop.create_task(self._limpiar_feedback_viejo())
+
+    async def on_ready(self):
+        log.info(f"Bot conectado como {self.user} (ID: {self.user.id})")
+        log.info(f"Servidores: {len(self.guilds)}")
+
+        await self.change_presence(
+            activity=discord.Activity(
+                type=discord.ActivityType.watching,
+                name="tramites consulares"
+            )
+        )
+
+    # ==================================================================
+    # SISTEMA DE FEEDBACK
+    # ==================================================================
+
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        """Detecta reacciones 👎 en respuestas del bot para pedir feedback."""
+        # Ignorar reacciones propias
+        if payload.user_id == self.user.id:
+            return
+
+        # Solo procesar si es un mensaje con feedback pendiente
+        if payload.message_id not in self._pending_feedback:
+            return
+
+        feedback_data = self._pending_feedback[payload.message_id]
+
+        # Solo procesar 👎
+        if str(payload.emoji) == "\U0001f44e":
+            feedback_data["estado"] = "esperando_correccion"
+
+            channel = self.get_channel(payload.channel_id)
+            if channel:
+                user = self.get_user(payload.user_id) or await self.fetch_user(payload.user_id)
+                await channel.send(
+                    f"{user.mention} Gracias por el feedback! "
+                    f"Que estuvo mal en mi respuesta? Responde a este mensaje con la correccion.",
+                    reference=discord.MessageReference(
+                        message_id=payload.message_id,
+                        channel_id=payload.channel_id
+                    )
+                )
+                log.info(f"Feedback negativo de {user} en mensaje {payload.message_id}")
+
+        elif str(payload.emoji) == "\U0001f44d":
+            # Feedback positivo, limpiar
+            del self._pending_feedback[payload.message_id]
+
+    async def on_message(self, message: discord.Message):
+        """Captura correcciones como replies a mensajes de feedback."""
+        # Ignorar mensajes del bot
+        if message.author == self.user:
+            return
+
+        # Solo procesar si es un reply
+        if not message.reference or not message.reference.message_id:
+            return
+
+        # Buscar si hay feedback pendiente para el mensaje referenciado
+        # El reply puede ser al mensaje original del bot O al mensaje de "que estuvo mal?"
+        ref_id = message.reference.message_id
+
+        # Buscar en pending_feedback por el mensaje original
+        feedback_data = None
+        feedback_msg_id = None
+
+        for msg_id, data in self._pending_feedback.items():
+            if data.get("estado") == "esperando_correccion":
+                # Verificar si el reply es al mensaje del bot o al followup
+                if msg_id == ref_id or data.get("followup_id") == ref_id:
+                    feedback_data = data
+                    feedback_msg_id = msg_id
+                    break
+
+        # Tambien buscar si el reply es a un mensaje que contiene "que estuvo mal"
+        if not feedback_data:
+            try:
+                ref_msg = await message.channel.fetch_message(ref_id)
+                if ref_msg.author == self.user and "estuvo mal" in ref_msg.content.lower():
+                    # Buscar el feedback original via la referencia del ref_msg
+                    if ref_msg.reference and ref_msg.reference.message_id:
+                        orig_id = ref_msg.reference.message_id
+                        if orig_id in self._pending_feedback:
+                            feedback_data = self._pending_feedback[orig_id]
+                            feedback_msg_id = orig_id
+            except Exception:
+                pass
+
+        if not feedback_data:
+            return
+
+        # Guardar la correccion
+        correccion_texto = message.content.strip()
+        if not correccion_texto:
+            return
+
+        resultado = guardar_feedback(
+            pregunta=feedback_data.get("pregunta", ""),
+            respuesta=feedback_data.get("respuesta", ""),
+            correccion=correccion_texto,
+            usuario=str(message.author)
+        )
+
+        if resultado.get("ok"):
+            await message.reply(
+                f"Correccion registrada (ID: {resultado['id']}). "
+                f"Voy a tener en cuenta tu feedback para futuras respuestas. Gracias!"
+            )
+            log.info(f"Correccion guardada: {resultado['id']} por {message.author}")
+        else:
+            await message.reply("Hubo un error guardando tu correccion. Intenta de nuevo.")
+
+        # Limpiar feedback pendiente
+        if feedback_msg_id and feedback_msg_id in self._pending_feedback:
+            del self._pending_feedback[feedback_msg_id]
+
+    # ==================================================================
+    # NOTIFICACIONES
+    # ==================================================================
+
+    async def notificar_reserva(self, datos: dict):
+        """Envia notificacion al canal cuando se confirma una reserva."""
+        if not DISCORD_CHANNEL_ID:
+            return
+
+        try:
+            channel = self.get_channel(DISCORD_CHANNEL_ID)
+            if not channel:
+                channel = await self.fetch_channel(DISCORD_CHANNEL_ID)
+
+            embed = discord.Embed(title="RESERVA EXITOSA", color=discord.Color.green())
+            embed.add_field(name="Cliente", value=datos.get("cliente", "N/A"), inline=True)
+            embed.add_field(name="Email", value=datos.get("email", "N/A"), inline=True)
+            embed.add_field(name="Cita", value=datos.get("fecha_cita", "Confirmada"), inline=False)
+            embed.set_footer(text=f"Reservado: {datos.get('timestamp', '')}")
+
+            await channel.send(embed=embed)
+            log.info(f"Notificacion enviada: {datos.get('cliente')}")
+
+        except Exception as e:
+            log.error(f"Error enviando notificacion: {e}")
+
+    # ==================================================================
+    # LIMPIEZA PERIODICA
+    # ==================================================================
+
+    async def _limpiar_feedback_viejo(self):
+        """Limpia feedback pendiente de mas de 30 minutos."""
+        while True:
+            await asyncio.sleep(300)  # Cada 5 minutos
+            ahora = datetime.now()
+            ids_a_eliminar = []
+            for msg_id, data in self._pending_feedback.items():
+                ts = data.get("timestamp")
+                if isinstance(ts, datetime) and (ahora - ts) > timedelta(minutes=30):
+                    ids_a_eliminar.append(msg_id)
+            for msg_id in ids_a_eliminar:
+                del self._pending_feedback[msg_id]
+            if ids_a_eliminar:
+                log.info(f"Feedback viejo limpiado: {len(ids_a_eliminar)} entradas")
+
+
+# ============================================================================
+# TASK DE RELAY
+# ============================================================================
+
+async def relay_notificaciones(bot: ConsularBot, sync_queue: queue.Queue):
+    """Lee eventos de la queue del CitaBot y los envia por Discord."""
+    log.info("Relay de notificaciones iniciado")
+    while True:
+        try:
+            try:
+                evento = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: sync_queue.get(timeout=2)
+                )
+            except queue.Empty:
+                await asyncio.sleep(1)
+                continue
+
+            if evento.get("tipo") == "reserva_exitosa":
+                await bot.notificar_reserva(evento)
+            else:
+                log.info(f"Evento desconocido: {evento.get('tipo')}")
+
+        except Exception as e:
+            log.error(f"Error en relay: {e}")
+            await asyncio.sleep(5)
+
+
+# ============================================================================
+# EJECUCION STANDALONE
+# ============================================================================
+
+async def main():
+    if not DISCORD_TOKEN:
+        log.error("DISCORD_TOKEN no configurado")
+        return
+    bot = ConsularBot()
+    await bot.start(DISCORD_TOKEN)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S"
+    )
+    asyncio.run(main())

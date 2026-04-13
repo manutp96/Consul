@@ -7,4 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "cita_bot_playwright.py"]
+EXPOSE 8000
+
+CMD ["python", "main.py"]
