@@ -83,6 +83,11 @@ async def verificar_api_key(request: Request):
 # ENDPOINTS
 # ============================================================================
 
+WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "rh_tramites_verify_2024")
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
+WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID", "")
+
+
 @app.get("/health")
 async def health():
     """Health check para Railway."""
@@ -91,6 +96,79 @@ async def health():
         "service": "RH Tramites Consulares API",
         "timestamp": datetime.now().isoformat()
     }
+
+
+# ============================================================================
+# WHATSAPP CLOUD API (Meta)
+# ============================================================================
+
+@app.get("/webhook/meta")
+async def meta_webhook_verify(request: Request):
+    """Verificacion de webhook de Meta (GET). Meta envia esto al configurar el webhook."""
+    params = request.query_params
+    mode = params.get("hub.mode", "")
+    token = params.get("hub.verify_token", "")
+    challenge = params.get("hub.challenge", "")
+
+    if mode == "subscribe" and token == WHATSAPP_VERIFY_TOKEN:
+        log.info(f"Webhook Meta verificado OK")
+        return int(challenge)
+    else:
+        log.warning(f"Webhook Meta verificacion fallida: mode={mode}, token={token}")
+        raise HTTPException(status_code=403, detail="Verificacion fallida")
+
+
+@app.post("/webhook/meta")
+async def meta_webhook_receive(request: Request):
+    """Recibe mensajes de WhatsApp via Meta Cloud API."""
+    try:
+        import httpx
+        payload = await request.json()
+
+        # Extraer mensaje
+        entry = payload.get("entry", [{}])[0]
+        changes = entry.get("changes", [{}])[0]
+        value = changes.get("value", {})
+        messages = value.get("messages", [])
+
+        if not messages:
+            return {"status": "no_message"}
+
+        msg = messages[0]
+        texto = msg.get("text", {}).get("body", "")
+        sender = msg.get("from", "")
+
+        if not texto:
+            return {"status": "no_text"}
+
+        log.info(f"WhatsApp Meta de {sender}: {texto[:80]}")
+
+        # Responder con IA
+        respuesta_texto = await responder(texto, plataforma="whatsapp")
+
+        # Enviar respuesta via Meta Cloud API
+        if WHATSAPP_TOKEN and WHATSAPP_PHONE_ID:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://graph.facebook.com/v25.0/{WHATSAPP_PHONE_ID}/messages",
+                    headers={
+                        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "messaging_product": "whatsapp",
+                        "to": sender,
+                        "type": "text",
+                        "text": {"body": respuesta_texto}
+                    }
+                )
+                log.info(f"Respuesta enviada a {sender}")
+
+        return {"status": "ok", "sender": sender}
+
+    except Exception as e:
+        log.error(f"Error en webhook Meta: {e}")
+        return {"status": "error", "detail": str(e)}
 
 
 @app.post("/api/consulta", response_model=ConsultaResponse)
