@@ -1,0 +1,850 @@
+{
+  "version": "1.0",
+  "consulado": "Consulado General de Espana en Montevideo, Uruguay",
+  "categorias": [
+    {
+      "id": 1,
+      "nombre": "Familia",
+      "tramites": [
+        {
+          "id": "1.1",
+          "nombre": "Nacimientos",
+          "descripcion": "Inscripcion en el Registro Civil espanol del nacimiento de espanoles nacidos en el extranjero.",
+          "quien_puede_solicitarlo": "Los progenitores estan obligados a promover la inscripcion, asi como el pariente mas proximo o cualquier persona mayor de edad que haya presenciado el nacimiento.",
+          "documentos": [
+            "Hoja declaratoria de datos para la inscripcion del nacimiento, firmada por el declarante",
+            "Certificado literal de nacimiento expedido por el Registro Civil local, debidamente apostillado",
+            "Fotocopia del DNI o pasaporte espanol (o partida literal de nacimiento del Registro Civil espanol)",
+            "Copia del DNI o pasaporte de los progenitores",
+            "Libro de familia original (si se tiene)",
+            "Si progenitores casados sin Libro de Familia: certificado literal de matrimonio",
+            "Certificado literal de nacimiento de cada progenitor espanol (ultimos 6 meses)",
+            "Si progenitor extranjero: certificado literal de nacimiento del Registro civil de su pais",
+            "Si progenitor separado/divorciado/viudo: documentacion acreditativa segun el caso",
+            "Para primer hijo: formulario de eleccion de apellidos"
+          ],
+          "procedimiento": "Presencialmente con cita previa para Registro Civil",
+          "notas": [
+            "Si el inscrito reside en la demarcacion o va a solicitar pasaporte, debe presentar al mismo tiempo documentacion para alta en Registro de Matricula Consular"
+          ],
+          "keywords": ["nacimiento", "inscripcion", "registro civil", "hijo", "bebe", "nacer", "recien nacido", "partida", "nacio"]
+        },
+        {
+          "id": "1.2",
+          "nombre": "Adopcion Internacional",
+          "descripcion": "Los espanoles residentes en Espana que quieran adoptar a un menor residente en Uruguay deben seguir la via de adopcion internacional, que se inicia siempre en Espana. Los espanoles residentes en Uruguay deben dirigir su solicitud al Instituto del Nino y Adolescente del Uruguay.",
+          "quien_puede_solicitarlo": "Espanoles residentes en Espana o Uruguay que deseen adoptar un menor.",
+          "documentos": [],
+          "procedimiento": "Cita previa para Registro Civil. La solicitud se inicia ante el organismo competente de la Comunidad Autonoma de residencia (si reside en Espana) o ante el INAU (si reside en Uruguay).",
+          "notas": [
+            "Normativa: Ley 54/2007 de Adopcion internacional, Real Decreto 165/2019, Convenio de La Haya de 1993"
+          ],
+          "keywords": ["adopcion", "adoptar", "menor", "nino", "internacional", "INAU"]
+        },
+        {
+          "id": "1.3",
+          "nombre": "Defunciones",
+          "descripcion": "Inscripcion de defuncion de espanoles fallecidos en el extranjero en el Registro Civil espanol.",
+          "quien_puede_solicitarlo": "Cualquier persona con conocimiento cierto del fallecimiento, especialmente los parientes mas cercanos.",
+          "documentos": [
+            "Hoja declaratoria de datos para la inscripcion de la defuncion",
+            "Certificado literal de defuncion del Registro Civil local",
+            "Copia del ultimo DNI o pasaporte del difunto",
+            "Libro de familia original",
+            "DNI o pasaporte del declarante",
+            "Si no estaba inscrito como residente: certificado literal de nacimiento espanol (ultimos 6 meses)"
+          ],
+          "procedimiento": "Presencialmente con cita previa para Registro Civil",
+          "notas": [],
+          "keywords": ["defuncion", "fallecimiento", "muerte", "murio", "fallecido", "difunto"]
+        },
+        {
+          "id": "1.4",
+          "nombre": "Divorcios",
+          "descripcion": "Los funcionarios consulares NO son competentes para autorizar escritura publica de divorcio. Los espanoles deben acudir a autoridades locales (Juez Letrado en Uruguay). Para que la sentencia produzca efectos en Espana, debe inscribirse en el Registro Civil espanol.",
+          "quien_puede_solicitarlo": "El interesado (divorciado/a).",
+          "documentos": [
+            "Solicitud firmada por el interesado",
+            "Copia original de sentencia firme de divorcio (legalizada y apostillada)",
+            "Certificado literal de matrimonio del Registro Civil local con anotacion marginal de divorcio",
+            "Certificado literal de matrimonio del Registro Civil espanol",
+            "Libro de familia",
+            "Copia del DNI o pasaporte del solicitante"
+          ],
+          "procedimiento": "Enviar documentacion por correo electronico a la seccion de Notaria del Consulado",
+          "notas": [
+            "La sentencia debe estar legalizada por Inspeccion General de Registros Notariales de la Suprema Corte de Justicia de Uruguay y apostillada por el Ministerio de RREE"
+          ],
+          "keywords": ["divorcio", "divorciarse", "separacion", "sentencia", "matrimonio disuelto"]
+        },
+        {
+          "id": "1.5",
+          "nombre": "Libro de Familia",
+          "descripcion": "La Oficina Consular NO expide Libros de Familia. Emite certificados literales de nacimiento y/o matrimonio. No puede actualizar ni emitir duplicados.",
+          "quien_puede_solicitarlo": null,
+          "documentos": [],
+          "procedimiento": "No aplica. Solicitar certificados literales en su lugar.",
+          "notas": [
+            "El consulado NO expide ni actualiza Libros de Familia"
+          ],
+          "keywords": ["libro familia", "libro de familia", "duplicado"]
+        },
+        {
+          "id": "1.6",
+          "nombre": "Matrimonios",
+          "descripcion": "Inscripcion de matrimonio celebrado en el extranjero en el Registro Civil espanol. Tambien es posible tramitar expediente matrimonial si uno de los contrayentes reside en la demarcacion.",
+          "quien_puede_solicitarlo": "Cualquiera de los conyuges.",
+          "documentos": [
+            "Hoja declaratoria",
+            "Certificado literal de matrimonio local apostillado",
+            "Copia DNI/pasaporte de ambos conyuges",
+            "Certificados literales de nacimiento de espanoles (ultimos 6 meses)",
+            "Documento acreditativo de domicilio actual",
+            "Libro de familia si hay hijos"
+          ],
+          "procedimiento": "Presencialmente con cita previa Registro Civil",
+          "notas": [
+            "La legislacion uruguaya NO autoriza la celebracion de matrimonios consulares"
+          ],
+          "keywords": ["matrimonio", "casarse", "boda", "casamiento", "conyuges", "inscripcion matrimonio"]
+        },
+        {
+          "id": "1.7",
+          "nombre": "Nombre y Apellidos",
+          "descripcion": "Cambio de nombre propio o apellidos. Posible por nombre usado habitualmente, nombre contrario a normas, traduccion, identidad de genero, inversion de orden de apellidos, etc.",
+          "quien_puede_solicitarlo": "El interesado mayor de 16 anos, o progenitores/representantes para menores de 16.",
+          "documentos": [
+            "Solicitud firmada",
+            "Certificado literal de nacimiento (ultimos 6 meses)",
+            "Prueba de residencia",
+            "Pruebas documentales segun caso"
+          ],
+          "procedimiento": "Presencialmente con cita previa para Registro Civil",
+          "notas": [
+            "Requisito: estar inscrito como residente en RMC"
+          ],
+          "keywords": ["nombre", "apellido", "cambio nombre", "cambio apellido", "cambiar nombre"]
+        },
+        {
+          "id": "1.8",
+          "nombre": "Parejas de Hecho",
+          "descripcion": "Las Oficinas Consulares NO tienen registro de parejas de hecho. Se puede registrar segun normativa local uruguaya. La Oficina puede expedir documentos necesarios como certificados y fe de vida.",
+          "quien_puede_solicitarlo": "Parejas que deseen acreditar convivencia.",
+          "documentos": [],
+          "procedimiento": "Acta de notoriedad ante Notario local o Consul para acreditar convivencia.",
+          "notas": [
+            "El consulado NO tiene registro de parejas de hecho"
+          ],
+          "keywords": ["pareja", "pareja de hecho", "convivencia", "union", "concubinato"]
+        },
+        {
+          "id": "1.9",
+          "nombre": "Sustraccion Internacional de Menores",
+          "descripcion": "Uruguay es firmante del Convenio de La Haya de 1980. Se puede presentar solicitud de restitucion al Ministerio de Justicia o acudir a la via judicial local.",
+          "quien_puede_solicitarlo": "El progenitor afectado.",
+          "documentos": [],
+          "procedimiento": "Presentar solicitud de restitucion al Ministerio de Justicia. Tambien via judicial local o reconocimiento de sentencia espanola.",
+          "notas": [],
+          "keywords": ["sustraccion", "menor", "secuestro", "restitucion", "menores"]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "nombre": "Certificados",
+      "tramites": [
+        {
+          "id": "2.1",
+          "nombre": "Certificado de Antecedentes Penales",
+          "descripcion": "Se puede obtener por internet con certificado digital o a traves de la Oficina Consular con comparecencia personal obligatoria.",
+          "quien_puede_solicitarlo": "El interesado.",
+          "documentos": [
+            "DNI/pasaporte original en vigor",
+            "Modelo 790-006",
+            "Justificante de abono de tasa"
+          ],
+          "procedimiento": "Por internet (sede electronica del Ministerio de Justicia) o presencialmente en Seccion Notaria, dias laborables 9h-13h SIN cita previa.",
+          "notas": [
+            "El certificado se recibe por SMS o email con Codigo Seguro de Verificacion",
+            "Certificado de delitos de naturaleza sexual: se tramita directamente en Espana"
+          ],
+          "keywords": ["antecedentes", "penales", "antecedentes penales", "certificado penal", "delitos"]
+        },
+        {
+          "id": "2.2",
+          "nombre": "Certificado de Ley",
+          "descripcion": "Acredita el contenido de la ley espanola ante autoridad extranjera. Los mas habituales: ley aplicable al matrimonio, pareja de hecho, nombre y apellidos.",
+          "quien_puede_solicitarlo": "El interesado.",
+          "documentos": [
+            "Solicitud firmada",
+            "Copia DNI/pasaporte",
+            "Explicacion de finalidad",
+            "Pago de tasa"
+          ],
+          "procedimiento": "Por correo postal, correo electronico o presencialmente.",
+          "notas": [],
+          "keywords": ["certificado ley", "ley espanola", "acreditar ley"]
+        },
+        {
+          "id": "2.3",
+          "nombre": "Fe de Vida",
+          "descripcion": "Certificado que acredita que una persona esta viva. Requiere comparecencia personal.",
+          "quien_puede_solicitarlo": "Espanoles con DNI o pasaporte en vigor.",
+          "documentos": [
+            "DNI o pasaporte en vigor"
+          ],
+          "procedimiento": "Presencialmente con cita previa para Registro Civil.",
+          "notas": [
+            "Si no puede desplazarse por motivos medicos: un familiar puede representarle con autorizacion manuscrita, certificado medico reciente (ultimos 15 dias) y copia DNI",
+            "Pensionistas: tambien pueden usar la app VIVESS del INSS"
+          ],
+          "keywords": ["fe de vida", "vida", "vivo", "pensionista", "pension", "VIVESS"]
+        },
+        {
+          "id": "2.4",
+          "nombre": "Certificado de Nacimiento",
+          "descripcion": "Certificados del Registro Civil espanol en diferentes formatos.",
+          "quien_puede_solicitarlo": "El interesado o sus representantes.",
+          "documentos": [
+            "Formulario de solicitud firmado",
+            "Copia DNI/pasaporte"
+          ],
+          "procedimiento": "Por correo postal, email o presencialmente con cita.",
+          "notas": [
+            "Tipos: Literal, literal para primer DNI/pasaporte, en extracto, internacional/plurilingue, negativo"
+          ],
+          "keywords": ["certificado nacimiento", "partida nacimiento", "literal nacimiento"]
+        },
+        {
+          "id": "2.5",
+          "nombre": "Certificado de Matrimonio",
+          "descripcion": "Certificados de matrimonio del Registro Civil espanol.",
+          "quien_puede_solicitarlo": "Los conyuges o sus representantes.",
+          "documentos": [
+            "Formulario de solicitud firmado",
+            "Copia DNI/pasaporte"
+          ],
+          "procedimiento": "Por correo postal, email o presencialmente con cita.",
+          "notas": [
+            "Tipos: Literal, en extracto, internacional/plurilingue, negativo"
+          ],
+          "keywords": ["certificado matrimonio", "partida matrimonio", "literal matrimonio"]
+        },
+        {
+          "id": "2.6",
+          "nombre": "Certificado de Defuncion",
+          "descripcion": "Certificados de defuncion del Registro Civil espanol.",
+          "quien_puede_solicitarlo": "Conyuge, pareja de hecho, ascendientes y descendientes hasta 2do grado.",
+          "documentos": [
+            "Formulario de solicitud firmado",
+            "Copia DNI/pasaporte"
+          ],
+          "procedimiento": "Por correo postal, email o presencialmente con cita.",
+          "notas": [
+            "Tipos: Literal, en extracto, internacional/plurilingue, negativo"
+          ],
+          "keywords": ["certificado defuncion", "partida defuncion", "literal defuncion"]
+        },
+        {
+          "id": "2.7",
+          "nombre": "Certificado de Residencia",
+          "descripcion": "Para espanoles inscritos como residentes en el RMC. Se emite dentro de 72 horas habiles, firmado digitalmente.",
+          "quien_puede_solicitarlo": "Espanoles inscritos como residentes en el RMC.",
+          "documentos": [
+            "Solicitud indicando finalidad",
+            "Copia DNI/pasaporte",
+            "Prueba de residencia"
+          ],
+          "procedimiento": "Por correo electronico o presencialmente.",
+          "notas": [
+            "Certificado de residencia para DNI: para obtener o renovar DNI (primera vez o cambio de domicilio)"
+          ],
+          "keywords": ["certificado residencia", "residencia", "residente", "domicilio"]
+        },
+        {
+          "id": "2.8",
+          "nombre": "Certificado de Capacidad Matrimonial",
+          "descripcion": "Para espanoles inscritos como residentes que necesiten acreditar capacidad para contraer matrimonio ante autoridades locales.",
+          "quien_puede_solicitarlo": "Espanoles inscritos como residentes en el RMC.",
+          "documentos": [
+            "DNI/pasaporte original",
+            "Declaracion jurada de estado civil",
+            "Certificado literal de nacimiento (ultimos 6 meses)",
+            "Documentacion adicional si divorciado/viudo"
+          ],
+          "procedimiento": "Comparecencia personal obligatoria con cita previa para Registro Civil.",
+          "notas": [],
+          "keywords": ["capacidad matrimonial", "casarse", "acreditar matrimonio"]
+        },
+        {
+          "id": "2.9",
+          "nombre": "Certificado de Baja Consular",
+          "descripcion": "Certificado para quienes han solicitado la baja del RMC. Se emite dentro de 72 horas habiles.",
+          "quien_puede_solicitarlo": "Espanoles que hayan solicitado baja del RMC.",
+          "documentos": [
+            "Solicitud de baja indicando finalidad",
+            "Copia DNI/pasaporte"
+          ],
+          "procedimiento": "Por correo electronico o presencialmente.",
+          "notas": [],
+          "keywords": ["baja consular", "baja", "darse de baja"]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "nombre": "Inscripcion Consular",
+      "tramites": [
+        {
+          "id": "3.1",
+          "nombre": "Alta de Residente",
+          "descripcion": "Obligatorio para espanoles con residencia habitual en el extranjero. Implica inscripcion en PERE y baja en padron anterior. Mayores de 18: inscripcion en CERA (efectos electorales).",
+          "quien_puede_solicitarlo": "Espanoles con residencia habitual en Uruguay.",
+          "documentos": [
+            "Formulario de solicitud",
+            "Declaracion de municipio a efectos electorales",
+            "Fotocopia DNI/pasaporte",
+            "Cedula de identidad uruguaya",
+            "Foto carnet (voluntaria)",
+            "Si gestiono nacionalidad fuera del consulado: partida literal de nacimiento espanola (menos de 6 meses)"
+          ],
+          "procedimiento": "Enviar documentacion escaneada por correo electronico al Consulado; esperar habilitacion para cita previa.",
+          "notas": [],
+          "keywords": ["alta", "residente", "inscripcion", "PERE", "CERA", "empadronamiento", "registrarse"]
+        },
+        {
+          "id": "3.2",
+          "nombre": "Alta de No Residente",
+          "descripcion": "Voluntaria pero recomendable para residencias temporales. No produce baja en padron anterior. Vigencia maxima: 1 ano (baja automatica si no se renueva).",
+          "quien_puede_solicitarlo": "Espanoles con residencia temporal en Uruguay.",
+          "documentos": [
+            "Formulario de inscripcion",
+            "Fotocopia DNI/pasaporte",
+            "Foto carnet (voluntaria)"
+          ],
+          "procedimiento": "Enviar correo electronico al Consulado con numero de contacto y aguardar respuesta.",
+          "notas": [],
+          "keywords": ["no residente", "temporal", "alta temporal", "visita"]
+        },
+        {
+          "id": "3.3",
+          "nombre": "Baja del Registro de Matricula / Modificacion de Datos",
+          "descripcion": "Gestion de baja o modificacion de datos en el Registro de Matricula Consular.",
+          "quien_puede_solicitarlo": "Espanoles inscritos en el RMC.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["baja", "modificacion", "datos", "registro matricula", "cambio datos"]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "nombre": "Nacionalidad",
+      "tramites": [
+        {
+          "id": "4.1",
+          "nombre": "Informacion General sobre Nacionalidad",
+          "descripcion": "Nacionalidad de origen: por ser hijo de espanol (independiente del lugar de nacimiento). Nacionalidad derivativa: por opcion, por residencia, por carta de naturaleza.",
+          "quien_puede_solicitarlo": null,
+          "documentos": [],
+          "procedimiento": "Depende del tipo de nacionalidad solicitada.",
+          "notas": [],
+          "keywords": ["nacionalidad", "espanol", "ciudadania", "ser espanol"]
+        },
+        {
+          "id": "4.2",
+          "nombre": "Nacionalidad por Opcion",
+          "descripcion": "Para personas sujetas a patria potestad de espanol, hijos de espanol nacido en Espana, personas con filiacion determinada despues de los 18, adoptados por espanoles despues de 18.",
+          "quien_puede_solicitarlo": "Personas con derecho a opcion segun la ley.",
+          "documentos": [
+            "Impreso de declaracion de datos",
+            "Documento de identidad",
+            "Pasaporte del progenitor espanol",
+            "Certificado literal de nacimiento del interesado (apostillado)",
+            "Certificado literal de nacimiento del progenitor espanol (ultimos 6 meses)",
+            "Certificado de matrimonio de progenitores",
+            "Libro de familia"
+          ],
+          "procedimiento": "Cita para Registro Civil.",
+          "notas": [
+            "Requisitos: jurar/prometer fidelidad al Rey y obediencia a la Constitucion; renunciar a anterior nacionalidad (exentos: iberoamericanos, andorranos, filipinos, guineanos ecuatorianos, portugueses, franceses y sefardies)"
+          ],
+          "keywords": ["nacionalidad opcion", "opcion", "hijo espanol", "padre espanol", "madre espanola"]
+        },
+        {
+          "id": "4.3",
+          "nombre": "Nacionalidad por la Ley de Memoria Democratica",
+          "descripcion": "PLAZO CERRADO desde el 23 de octubre de 2025. Solo se atienden solicitudes que entraron en plazo antes de esa fecha.",
+          "quien_puede_solicitarlo": "Nacidos fuera de Espana de padre/madre/abuelo/abuela originariamente espanoles; hijos de mujeres espanolas que perdieron nacionalidad por matrimonio antes de 1978; hijos mayores de edad de quienes obtuvieron nacionalidad por LMD.",
+          "documentos": [
+            "Documentacion especifica segun Anexo (I, II, III, IV)"
+          ],
+          "procedimiento": "Cita para Registro Civil (solo si entro en plazo).",
+          "notas": [
+            "PLAZO CERRADO desde el 23 de octubre de 2025"
+          ],
+          "keywords": ["memoria democratica", "ley memoria", "nietos", "abuelos espanoles", "memoria historica", "LMD"]
+        },
+        {
+          "id": "4.4",
+          "nombre": "Conservacion de la Nacionalidad",
+          "descripcion": "Para espanoles que adquieren otra nacionalidad y quieren evitar la perdida de la espanola. Plazo: antes de 3 anos desde adquisicion de otra nacionalidad.",
+          "quien_puede_solicitarlo": "Espanoles que adquirieron otra nacionalidad.",
+          "documentos": [
+            "Certificado literal de nacimiento espanol (ultimos 6 meses)",
+            "Pasaporte o DNI"
+          ],
+          "procedimiento": "Cita para Registro Civil.",
+          "notas": [
+            "Exentos: espanoles de origen que adquieran nacionalidad de paises iberoamericanos, Andorra, Filipinas, Guinea Ecuatorial, Portugal o Francia"
+          ],
+          "keywords": ["conservacion", "conservar nacionalidad", "no perder", "doble nacionalidad"]
+        },
+        {
+          "id": "4.5",
+          "nombre": "Recuperacion de la Nacionalidad",
+          "descripcion": "Para espanoles que perdieron la nacionalidad y desean recuperarla.",
+          "quien_puede_solicitarlo": "Ex-espanoles (emigrantes e hijos de emigrantes no necesitan residir en Espana).",
+          "documentos": [
+            "Impreso de declaracion de datos",
+            "Documento de identidad extranjero",
+            "Ultimo pasaporte espanol",
+            "Certificados literales de nacimiento del interesado y progenitores",
+            "Prueba de domicilio"
+          ],
+          "procedimiento": "Cita para Registro Civil.",
+          "notas": [],
+          "keywords": ["recuperacion", "recuperar nacionalidad", "perdi nacionalidad", "volver a ser espanol"]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "nombre": "Pasaportes y Otros Documentos",
+      "tramites": [
+        {
+          "id": "5.1",
+          "nombre": "Pasaporte - Requisitos y Procedimiento",
+          "descripcion": "Expedicion y renovacion de pasaporte espanol.",
+          "quien_puede_solicitarlo": "Espanoles dados de alta en el RMC.",
+          "documentos": [
+            "Pasaporte anterior",
+            "DNI en vigor (si se posee)",
+            "1 foto (32x26mm, color, fondo blanco, de frente)",
+            "Cedula de identidad uruguaya en vigor",
+            "Todo en ORIGINAL y FOTOCOPIA",
+            "Si documentos caducados mas de 3 anos: certificado literal de nacimiento (ultimos 6 meses)"
+          ],
+          "procedimiento": "Con cita previa. Se toman huellas dactilares (mayores de 12) y firma digital (mayores de 14).",
+          "notas": [
+            "Se puede renovar cuando quede menos de 1 ano para caducidad",
+            "Plazo de entrega: aproximadamente 3 semanas (actualmente 6-8 semanas de demora)",
+            "Retirada: sin cita, lunes a viernes 09:00-12:30 en Seccion Pasaportes. Se puede autorizar a un tercero"
+          ],
+          "keywords": ["pasaporte", "renovar pasaporte", "pasaporte espanol", "expedicion", "foto pasaporte"]
+        },
+        {
+          "id": "5.2",
+          "nombre": "DNI - Documento Nacional de Identidad",
+          "descripcion": "Gestion del Documento Nacional de Identidad espanol.",
+          "quien_puede_solicitarlo": "Espanoles.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado para requisitos especificos.",
+          "notas": [],
+          "keywords": ["DNI", "documento identidad", "carnet identidad"]
+        },
+        {
+          "id": "5.3",
+          "nombre": "NIE - Numero de Identidad de Extranjero",
+          "descripcion": "Asignacion de NIE para extranjeros con intereses economicos, profesionales o sociales en Espana.",
+          "quien_puede_solicitarlo": "Extranjeros con vinculacion a Espana.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado para requisitos especificos.",
+          "notas": [],
+          "keywords": ["NIE", "numero identidad extranjero", "extranjero"]
+        },
+        {
+          "id": "5.4",
+          "nombre": "NIF - Numero de Identificacion Fiscal",
+          "descripcion": "Gestion del NIF para cuestiones fiscales en Espana.",
+          "quien_puede_solicitarlo": "Espanoles y extranjeros con obligaciones fiscales en Espana.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado para requisitos especificos.",
+          "notas": [],
+          "keywords": ["NIF", "numero fiscal", "identificacion fiscal", "impuestos"]
+        },
+        {
+          "id": "5.5",
+          "nombre": "Pasaportes para Menores y Personas Incapacitadas",
+          "descripcion": "Expedicion de pasaporte para menores de edad y personas con incapacidad.",
+          "quien_puede_solicitarlo": "Progenitores o representantes legales.",
+          "documentos": [],
+          "procedimiento": "Con cita previa. Requiere autorizacion de ambos progenitores para menores.",
+          "notas": [],
+          "keywords": ["menor", "pasaporte menor", "nino", "incapacitado", "menores pasaporte"]
+        },
+        {
+          "id": "5.6",
+          "nombre": "Sustraccion o Perdida de Pasaporte",
+          "descripcion": "Procedimiento ante perdida, robo o sustraccion del pasaporte.",
+          "quien_puede_solicitarlo": "El titular del pasaporte.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado. Puede requerirse denuncia policial.",
+          "notas": [],
+          "keywords": ["perdida pasaporte", "robo pasaporte", "perdi pasaporte", "sustraccion"]
+        },
+        {
+          "id": "5.7",
+          "nombre": "Autorizacion de Viaje para Menores",
+          "descripcion": "Autorizacion para que un menor viaje sin ambos progenitores.",
+          "quien_puede_solicitarlo": "Los progenitores o representantes legales.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["autorizacion viaje", "menor viaje", "permiso viaje", "nino viajar"]
+        },
+        {
+          "id": "5.8",
+          "nombre": "Permiso de Conduccion",
+          "descripcion": "Gestion relacionada con permisos de conduccion espanoles.",
+          "quien_puede_solicitarlo": "Espanoles con permiso de conduccion espanol.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["permiso conduccion", "licencia conducir", "carnet conducir", "manejar"]
+        },
+        {
+          "id": "5.9",
+          "nombre": "Salvoconducto",
+          "descripcion": "Documento de viaje de emergencia para regresar a Espana o al pais de residencia.",
+          "quien_puede_solicitarlo": "Espanoles sin pasaporte valido en situacion de emergencia.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["salvoconducto", "emergencia", "documento viaje", "volver espana"]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "nombre": "Notaria",
+      "tramites": [
+        {
+          "id": "6.1",
+          "nombre": "Poderes Notariales",
+          "descripcion": "Otorgamiento de poderes notariales: general, general para pleitos, especial para pleitos, especial.",
+          "quien_puede_solicitarlo": "Cualquier persona que necesite otorgar un poder.",
+          "documentos": [
+            "DNI/pasaporte del otorgante en vigor",
+            "NIE si extranjero",
+            "Copia DNI/NIE del apoderado",
+            "Descripcion de facultades",
+            "Pago de tasa"
+          ],
+          "procedimiento": "Comparecencia personal obligatoria el dia de la firma.",
+          "notas": [
+            "Revocacion de poderes: mediante escritura de revocacion"
+          ],
+          "keywords": ["poder", "poder notarial", "apoderado", "poder general", "poder especial", "pleitos"]
+        },
+        {
+          "id": "6.2",
+          "nombre": "Actas Notariales",
+          "descripcion": "Actas de notoriedad y otros instrumentos notariales.",
+          "quien_puede_solicitarlo": "El interesado.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["acta notarial", "acta", "notoriedad"]
+        },
+        {
+          "id": "6.3",
+          "nombre": "Testamentos",
+          "descripcion": "Otorgamiento de testamento ante el Consul.",
+          "quien_puede_solicitarlo": "Espanoles que deseen otorgar testamento.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["testamento", "herencia", "ultima voluntad", "herederos"]
+        },
+        {
+          "id": "6.4",
+          "nombre": "Capitulaciones Matrimoniales",
+          "descripcion": "Otorgamiento de capitulaciones matrimoniales ante el Consul.",
+          "quien_puede_solicitarlo": "Los contrayentes o conyuges.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["capitulaciones", "regimen matrimonial", "bienes gananciales", "separacion bienes"]
+        },
+        {
+          "id": "6.5",
+          "nombre": "Legitimacion de Firma",
+          "descripcion": "Legitimacion de firma en documentos.",
+          "quien_puede_solicitarlo": "El interesado.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["legitimacion", "firma", "legalizar firma"]
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "nombre": "Legalizacion, Apostilla y Compulsa",
+      "tramites": [
+        {
+          "id": "7.1",
+          "nombre": "Legalizacion y Apostilla de La Haya",
+          "descripcion": "La apostilla de La Haya esta en vigor en Uruguay desde el 16 de octubre de 2012. Documentos uruguayos se apostillan en el Ministerio de RREE. La Oficina Consular NO legaliza ni apostilla documentos espanoles.",
+          "quien_puede_solicitarlo": "El interesado.",
+          "documentos": [],
+          "procedimiento": "Documentos uruguayos: Ministerio de RREE. Documentos espanoles: en Espana. Documentos consulares: Ministerio de RREE de Uruguay. La Oficina Consular solo legaliza documentos uruguayos excluidos del Convenio (en Seccion Caja, sin cita).",
+          "notas": [
+            "La Oficina Consular NO legaliza ni apostilla documentos espanoles"
+          ],
+          "keywords": ["apostilla", "legalizacion", "La Haya", "legalizar", "apostillar"]
+        },
+        {
+          "id": "7.2",
+          "nombre": "Compulsa de Documentos",
+          "descripcion": "Compulsa de copias de documentos. Gratuito si acompana solicitudes presentadas ante la Oficina; con tasa en otros casos.",
+          "quien_puede_solicitarlo": "El interesado.",
+          "documentos": [
+            "Documento original a compulsar"
+          ],
+          "procedimiento": "Lunes a viernes 08:30-13:30, Seccion Caja, SIN cita previa.",
+          "notas": [
+            "Solo documentos espanoles o extranjeros para autoridades espanolas"
+          ],
+          "keywords": ["compulsa", "compulsar", "copia compulsada", "copia certificada"]
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "nombre": "Visados",
+      "tramites": [
+        {
+          "id": "8.1",
+          "nombre": "Visados Nacionales - Informacion General",
+          "descripcion": "Necesarios para estancias en Espana superiores a 90 dias (en periodo de 180 dias) para trabajo, estudios o residencia. Ciudadanos UE/EEE/Suiza no necesitan visado.",
+          "quien_puede_solicitarlo": "Extranjeros que deseen residir, trabajar o estudiar en Espana.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en la seccion de visados del Consulado.",
+          "notas": [],
+          "keywords": ["visado", "visa", "visa espana", "permiso", "entrar espana"]
+        },
+        {
+          "id": "8.2",
+          "nombre": "Visado de Estancia (Schengen)",
+          "descripcion": "Para estancias cortas en el espacio Schengen (hasta 90 dias).",
+          "quien_puede_solicitarlo": "Nacionales de paises que requieren visado Schengen.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["schengen", "estancia corta", "turismo", "visita"]
+        },
+        {
+          "id": "8.3",
+          "nombre": "Visado de Familiares de Ciudadanos UE",
+          "descripcion": "Para familiares de ciudadanos de la UE que deseen acompanarlos o reunirse con ellos en Espana.",
+          "quien_puede_solicitarlo": "Familiares de ciudadanos UE.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["familiar UE", "familiar europeo", "reagrupacion UE"]
+        },
+        {
+          "id": "8.4",
+          "nombre": "Visado de Estudios",
+          "descripcion": "Para estudiar en Espana por un periodo superior a 90 dias.",
+          "quien_puede_solicitarlo": "Extranjeros aceptados en centros de estudio espanoles.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["estudios", "estudiar", "universidad", "estudiante", "beca"]
+        },
+        {
+          "id": "8.5",
+          "nombre": "Visado de Trabajo por Cuenta Ajena",
+          "descripcion": "Para trabajar en Espana como empleado.",
+          "quien_puede_solicitarlo": "Extranjeros con oferta de empleo en Espana.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["trabajo", "empleo", "cuenta ajena", "trabajar espana", "contrato"]
+        },
+        {
+          "id": "8.6",
+          "nombre": "Visado de Trabajo por Cuenta Propia",
+          "descripcion": "Para trabajar en Espana como autonomo.",
+          "quien_puede_solicitarlo": "Extranjeros que deseen trabajar de forma autonoma en Espana.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["cuenta propia", "autonomo", "emprendedor", "negocio"]
+        },
+        {
+          "id": "8.7",
+          "nombre": "Visado de Residencia No Lucrativa",
+          "descripcion": "Para residir en Espana sin realizar actividad laboral.",
+          "quien_puede_solicitarlo": "Extranjeros con medios economicos suficientes.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["no lucrativa", "residencia", "jubilado", "rentista", "sin trabajar"]
+        },
+        {
+          "id": "8.8",
+          "nombre": "Visado de Residencia para Teletrabajo (Nomada Digital)",
+          "descripcion": "Para personas que trabajan de forma remota para empresas fuera de Espana.",
+          "quien_puede_solicitarlo": "Trabajadores remotos/nomadas digitales.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["teletrabajo", "nomada digital", "remoto", "digital nomad"]
+        },
+        {
+          "id": "8.9",
+          "nombre": "Visado de Reagrupacion Familiar",
+          "descripcion": "Para familiares de residentes en Espana en regimen general.",
+          "quien_puede_solicitarlo": "Familiares de residentes legales en Espana.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["reagrupacion", "familiar", "familia", "reunirse"]
+        },
+        {
+          "id": "8.10",
+          "nombre": "Visado de Investigador",
+          "descripcion": "Para investigadores aceptados en centros de investigacion espanoles.",
+          "quien_puede_solicitarlo": "Investigadores con acuerdo de acogida.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["investigador", "investigacion", "cientifico", "academia"]
+        },
+        {
+          "id": "8.11",
+          "nombre": "Visado de Practicas",
+          "descripcion": "Para realizar practicas en empresas espanolas.",
+          "quien_puede_solicitarlo": "Extranjeros con acuerdo de practicas.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["practicas", "pasantia", "formacion"]
+        },
+        {
+          "id": "8.12",
+          "nombre": "Visado para Trabajador Altamente Cualificado",
+          "descripcion": "Para trabajadores altamente cualificados y traslados intraempresariales.",
+          "quien_puede_solicitarlo": "Profesionales altamente cualificados.",
+          "documentos": [],
+          "procedimiento": "Solicitar cita en el Consulado.",
+          "notas": [],
+          "keywords": ["altamente cualificado", "traslado", "intraempresarial", "profesional"]
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "nombre": "Votar en Espana",
+      "tramites": [
+        {
+          "id": "9.1",
+          "nombre": "Voto de Residentes en el Extranjero (CERA)",
+          "descripcion": "Procedimiento de voto para espanoles inscritos en el CERA.",
+          "quien_puede_solicitarlo": "Espanoles inscritos en el CERA.",
+          "documentos": [],
+          "procedimiento": "Solicitar voto por correo segun plazos electorales.",
+          "notas": [],
+          "keywords": ["votar", "voto", "CERA", "elecciones", "residente extranjero"]
+        },
+        {
+          "id": "9.2",
+          "nombre": "Voto de Espanoles Temporalmente en el Extranjero (ERTA)",
+          "descripcion": "Procedimiento de voto para espanoles que se encuentran temporalmente fuera de Espana.",
+          "quien_puede_solicitarlo": "Espanoles temporalmente en el extranjero.",
+          "documentos": [],
+          "procedimiento": "Solicitar voto rogado segun plazos electorales.",
+          "notas": [],
+          "keywords": ["ERTA", "voto temporal", "voto rogado", "viaje"]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "nombre": "Emergencia Consular",
+      "tramites": [
+        {
+          "id": "10.1",
+          "nombre": "Asistencia en Caso de Emergencia",
+          "descripcion": "Asistencia consular en situaciones de emergencia.",
+          "quien_puede_solicitarlo": "Espanoles en situacion de emergencia.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado o al telefono de emergencia consular.",
+          "notas": [],
+          "keywords": ["emergencia", "ayuda", "urgencia", "asistencia"]
+        },
+        {
+          "id": "10.2",
+          "nombre": "Busqueda de Personas o Paraderos",
+          "descripcion": "Ayuda para localizar a espanoles cuyo paradero se desconoce.",
+          "quien_puede_solicitarlo": "Familiares de espanoles desaparecidos.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["busqueda", "paradero", "desaparecido", "localizar"]
+        },
+        {
+          "id": "10.3",
+          "nombre": "Detenidos",
+          "descripcion": "Asistencia a espanoles detenidos en Uruguay.",
+          "quien_puede_solicitarlo": "El detenido o sus familiares.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["detenido", "preso", "detencion", "carcel"]
+        },
+        {
+          "id": "10.4",
+          "nombre": "Traslado de Restos Mortales",
+          "descripcion": "Gestion del traslado de restos mortales de espanoles fallecidos en Uruguay a Espana.",
+          "quien_puede_solicitarlo": "Familiares del fallecido.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado.",
+          "notas": [],
+          "keywords": ["traslado restos", "restos mortales", "repatriacion", "fallecido"]
+        },
+        {
+          "id": "10.5",
+          "nombre": "Violencia contra la Mujer",
+          "descripcion": "Asistencia y proteccion a mujeres espanolas victimas de violencia de genero.",
+          "quien_puede_solicitarlo": "Mujeres espanolas victimas de violencia.",
+          "documentos": [],
+          "procedimiento": "Contactar al Consulado o al telefono de emergencia.",
+          "notas": [],
+          "keywords": ["violencia", "mujer", "genero", "maltrato", "proteccion"]
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "nombre": "Informacion General Registro Civil",
+      "tramites": [
+        {
+          "id": "11.1",
+          "nombre": "Informacion General del Registro Civil Consular",
+          "descripcion": "Informacion general sobre el funcionamiento del Registro Civil consular.",
+          "quien_puede_solicitarlo": null,
+          "documentos": [],
+          "procedimiento": "Consultar en el Consulado.",
+          "notas": [],
+          "keywords": ["registro civil", "informacion", "general", "como funciona"]
+        }
+      ]
+    }
+  ]
+}

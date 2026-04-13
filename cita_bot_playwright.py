@@ -186,10 +186,19 @@ def leer_clientes_google_sheets() -> list:
 # ============================================================================
 
 class CitaBot:
-    def __init__(self):
+    def __init__(self, notification_queue=None):
         self.playwright = None
         self.browser = None
         self.page = None
+        self._notification_queue = notification_queue
+        self.estado = {
+            "activo": False,
+            "ciclo": 0,
+            "ultimo_intento": None,
+            "ultima_reserva": None,
+            "servicio": SERVICIO,
+            "cliente_actual": None,
+        }
 
     def iniciar_browser(self):
         log.info("Iniciando navegador...")
@@ -683,8 +692,11 @@ class CitaBot:
         log.info(f"Google Sheet: {GOOGLE_SHEET_ID}")
         log.info("=" * 50)
 
+        self.estado["activo"] = True
+
         while True:
             ciclo += 1
+            self.estado["ciclo"] = ciclo
 
             # Leer clientes pendientes (re-descarga Google Sheets cada ciclo)
             clientes = leer_clientes_google_sheets()
@@ -698,6 +710,8 @@ class CitaBot:
             cliente = clientes[0]
             log.info(f"\n--- Ciclo #{ciclo} | {datetime.now().strftime('%H:%M:%S')} ---")
             log.info(f"Intentando para: {cliente.nombre}")
+            self.estado["cliente_actual"] = cliente.nombre
+            self.estado["ultimo_intento"] = datetime.now().strftime("%H:%M:%S")
 
             try:
                 resultado = self.intentar_reserva(cliente)
@@ -711,6 +725,17 @@ class CitaBot:
                 guardar_reservado(cliente, resultado)
                 log.info(f"\n¡RESERVA COMPLETADA para {cliente.nombre}!")
                 log.info(f"Cita: {resultado}")
+
+                # Notificar a Discord/API si hay queue
+                self.estado["ultima_reserva"] = f"{cliente.nombre} - {resultado}"
+                if self._notification_queue:
+                    self._notification_queue.put({
+                        "tipo": "reserva_exitosa",
+                        "cliente": cliente.nombre,
+                        "email": cliente.email,
+                        "fecha_cita": resultado,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    })
 
                 # Pausa breve antes del siguiente cliente
                 time.sleep(5)

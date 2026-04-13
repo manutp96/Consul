@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "main-orchestrator",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["main.py"],
+      "port": 8000
+    },
+    {
+      "name": "api-server-only",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
+      "port": 8000
+    },
+    {
+      "name": "cita-bot-standalone",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["cita_bot_playwright.py"],
+      "port": 0
+    }
+  ]
+}
