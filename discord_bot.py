@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import discord
 from discord import app_commands
 
-from ai_assistant import responder, buscar_tramite_local, formatear_resultado_local
+from ai_assistant import responder, buscar_tramite_local, formatear_resultado_local, procesar_mensaje_natural, formatear_respuesta_discord
 from kb_manager import agregar_info, corregir_tramite, agregar_nota, guardar_feedback
 
 log = logging.getLogger("Discord")
@@ -427,10 +427,91 @@ class ConsularBot(discord.Client):
             del self._pending_feedback[payload.message_id]
 
     async def on_message(self, message: discord.Message):
-        """Captura correcciones como replies a mensajes de feedback."""
+        """Maneja menciones al bot y correcciones de feedback."""
         # Ignorar mensajes del bot
         if message.author == self.user:
             return
+
+        # ============================================================
+        # MENCION AL BOT (@bot mensaje en lenguaje natural)
+        # ============================================================
+        if self.user.mentioned_in(message) and not message.mention_everyone:
+            # Extraer texto sin la mencion
+            texto = message.content
+            for mention in message.mentions:
+                texto = texto.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
+            texto = texto.strip()
+
+            if not texto:
+                await message.reply("Hola! Preguntame lo que necesites sobre tramites consulares.")
+                return
+
+            log.info(f"Mencion de {message.author}: {texto[:80]}")
+
+            async with message.channel.typing():
+                resultado = await procesar_mensaje_natural(texto, str(message.author))
+
+            tipo = resultado.get("tipo", "respuesta")
+            texto_respuesta = resultado.get("texto", "No pude procesar tu mensaje.")
+
+            # Formatear para Discord (max 2000 chars)
+            chunks = formatear_respuesta_discord(texto_respuesta)
+
+            if tipo == "guardado":
+                msg = await message.reply(f"✅ {chunks[0]}")
+                for chunk in chunks[1:]:
+                    await message.channel.send(chunk)
+
+            elif tipo == "correccion":
+                msg = await message.reply(f"✏️ {chunks[0]}")
+                for chunk in chunks[1:]:
+                    await message.channel.send(chunk)
+
+            elif tipo == "clientes":
+                try:
+                    from cita_bot_playwright import leer_clientes_google_sheets
+                    clientes = leer_clientes_google_sheets()
+                    if not clientes:
+                        await message.reply("No hay clientes pendientes.")
+                    else:
+                        lineas = [f"**Clientes pendientes ({len(clientes)}):**"]
+                        for i, c in enumerate(clientes[:10], 1):
+                            lineas.append(f"{i}. {c.nombre} - {c.tramite}")
+                        await message.reply("\n".join(lineas))
+                except Exception as e:
+                    await message.reply(f"Error obteniendo clientes: {e}")
+
+            elif tipo == "estado":
+                estado = self.cita_bot_estado
+                activo = "Activo" if estado.get("activo") else "Inactivo"
+                await message.reply(f"**Bot de Citas:** {activo} | Ciclo: {estado.get('ciclo', 0)} | Ultimo: {estado.get('ultimo_intento', 'N/A')}")
+
+            elif tipo == "error":
+                await message.reply(f"⚠️ {chunks[0]}")
+
+            else:
+                msg = await message.reply(chunks[0])
+                for chunk in chunks[1:]:
+                    await message.channel.send(chunk)
+                # Agregar reacciones de feedback
+                try:
+                    await msg.add_reaction("\U0001f44d")
+                    await msg.add_reaction("\U0001f44e")
+                    self._pending_feedback[msg.id] = {
+                        "pregunta": texto,
+                        "respuesta": chunks[0],
+                        "usuario": str(message.author),
+                        "timestamp": datetime.now(),
+                        "estado": "esperando_reaccion"
+                    }
+                except Exception:
+                    pass
+
+            return
+
+        # ============================================================
+        # FEEDBACK: replies a mensajes del bot
+        # ============================================================
 
         # Solo procesar si es un reply
         if not message.reference or not message.reference.message_id:
