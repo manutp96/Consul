@@ -435,6 +435,29 @@ class ConsularBot(discord.Client):
             return
 
         # ============================================================
+        # WHATSAPP: reply a mensaje de cliente → enviar por WhatsApp (PRIORIDAD)
+        # ============================================================
+        if message.reference and message.reference.message_id:
+            ref_id = message.reference.message_id
+            if ref_id in self._whatsapp_messages:
+                wa_data = self._whatsapp_messages[ref_id]
+                # Extraer texto sin menciones al bot
+                respuesta_texto = message.content
+                for mention in message.mentions:
+                    respuesta_texto = respuesta_texto.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
+                respuesta_texto = respuesta_texto.strip()
+
+                if respuesta_texto:
+                    enviado = await self._enviar_whatsapp(wa_data["sender"], respuesta_texto)
+                    if enviado:
+                        await message.add_reaction("\u2705")
+                        log.info(f"Respuesta enviada por WhatsApp a {wa_data['sender']}: {respuesta_texto[:50]}")
+                    else:
+                        await message.add_reaction("\u274c")
+                        await message.reply("Error enviando el mensaje por WhatsApp. Verificar configuracion.")
+                return
+
+        # ============================================================
         # MENCION AL BOT (@bot mensaje en lenguaje natural)
         # ============================================================
         if self.user.mentioned_in(message) and not message.mention_everyone:
@@ -510,31 +533,6 @@ class ConsularBot(discord.Client):
                     pass
 
             return
-
-        # ============================================================
-        # WHATSAPP: reply a mensaje de cliente → enviar por WhatsApp
-        # ============================================================
-
-        if message.reference and message.reference.message_id:
-            ref_id = message.reference.message_id
-
-            # Verificar si es un reply a un mensaje de WhatsApp
-            if ref_id in self._whatsapp_messages:
-                wa_data = self._whatsapp_messages[ref_id]
-                respuesta_texto = message.content.strip()
-
-                if respuesta_texto:
-                    # Enviar por WhatsApp via Meta Cloud API
-                    enviado = await self._enviar_whatsapp(wa_data["sender"], respuesta_texto)
-
-                    if enviado:
-                        await message.add_reaction("✅")
-                        log.info(f"Respuesta enviada por WhatsApp a {wa_data['sender']}: {respuesta_texto[:50]}")
-                    else:
-                        await message.add_reaction("❌")
-                        await message.reply("Error enviando el mensaje por WhatsApp. Verificar configuración.")
-
-                return
 
         # ============================================================
         # FEEDBACK: replies a mensajes del bot
