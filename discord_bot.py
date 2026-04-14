@@ -40,6 +40,7 @@ class ConsularBot(discord.Client):
         self.notification_queue = notification_queue
         self.cita_bot_estado = cita_bot_estado or {}
         self._pending_feedback = {}  # message_id -> {pregunta, respuesta, usuario, timestamp, estado}
+        self._whatsapp_messages = {}  # message_id -> {sender: "598XXXXXXX", sender_name: "...", timestamp: datetime}
         self._setup_commands()
 
     def _setup_commands(self):
@@ -511,6 +512,31 @@ class ConsularBot(discord.Client):
             return
 
         # ============================================================
+        # WHATSAPP: reply a mensaje de cliente → enviar por WhatsApp
+        # ============================================================
+
+        if message.reference and message.reference.message_id:
+            ref_id = message.reference.message_id
+
+            # Verificar si es un reply a un mensaje de WhatsApp
+            if ref_id in self._whatsapp_messages:
+                wa_data = self._whatsapp_messages[ref_id]
+                respuesta_texto = message.content.strip()
+
+                if respuesta_texto:
+                    # Enviar por WhatsApp via Meta Cloud API
+                    enviado = await self._enviar_whatsapp(wa_data["sender"], respuesta_texto)
+
+                    if enviado:
+                        await message.add_reaction("✅")
+                        log.info(f"Respuesta enviada por WhatsApp a {wa_data['sender']}: {respuesta_texto[:50]}")
+                    else:
+                        await message.add_reaction("❌")
+                        await message.reply("Error enviando el mensaje por WhatsApp. Verificar configuración.")
+
+                return
+
+        # ============================================================
         # FEEDBACK: replies a mensajes del bot
         # ============================================================
 
@@ -635,13 +661,19 @@ class ConsularBot(discord.Client):
                 color=discord.Color.green(),
                 timestamp=datetime.now()
             )
-            embed.set_footer(text=f"Recibido a las {timestamp}")
+            embed.set_footer(text=f"Responde a este mensaje para contestarle al cliente por WhatsApp")
 
-            await channel.send(embed=embed)
+            msg = await channel.send(embed=embed)
+
+            # Guardar mapeo para que cuando el empleado responda, se envíe por WhatsApp
+            self._whatsapp_messages[msg.id] = {
+                "sender": sender,
+                "sender_name": sender_name,
+                "timestamp": datetime.now()
+            }
 
             # Embed con la sugerencia del bot (separado para que sea fácil copiar)
             if sugerencia:
-                # Truncar si es muy largo
                 if len(sugerencia) > 1900:
                     sugerencia = sugerencia[:1900] + "..."
 
@@ -650,9 +682,16 @@ class ConsularBot(discord.Client):
                     description=sugerencia,
                     color=discord.Color.blue()
                 )
-                embed_sugerencia.set_footer(text="Copiar y pegar en WhatsApp Business, o responder manualmente")
+                embed_sugerencia.set_footer(text="Responde al mensaje de arriba para enviar esta u otra respuesta al cliente")
 
-                await channel.send(embed=embed_sugerencia)
+                sugerencia_msg = await channel.send(embed=embed_sugerencia)
+
+                # También mapear el mensaje de sugerencia al mismo sender
+                self._whatsapp_messages[sugerencia_msg.id] = {
+                    "sender": sender,
+                    "sender_name": sender_name,
+                    "timestamp": datetime.now()
+                }
 
             log.info(f"Mensaje de WhatsApp reenviado a Discord: {nombre_display}")
 
@@ -660,14 +699,57 @@ class ConsularBot(discord.Client):
             log.error(f"Error reenviando WhatsApp a Discord: {e}")
 
     # ==================================================================
+    # ENVIAR WHATSAPP VIA META CLOUD API
+    # ==================================================================
+
+    async def _enviar_whatsapp(self, to: str, texto: str) -> bool:
+        """Envía un mensaje de WhatsApp al cliente via Meta Cloud API."""
+        import os
+        whatsapp_token = os.environ.get("WHATSAPP_TOKEN", "")
+        whatsapp_phone_id = os.environ.get("WHATSAPP_PHONE_ID", "")
+
+        if not whatsapp_token or not whatsapp_phone_id:
+            log.error("WHATSAPP_TOKEN o WHATSAPP_PHONE_ID no configurados")
+            return False
+
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://graph.facebook.com/v25.0/{whatsapp_phone_id}/messages",
+                    headers={
+                        "Authorization": f"Bearer {whatsapp_token}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "messaging_product": "whatsapp",
+                        "to": to,
+                        "type": "text",
+                        "text": {"body": texto}
+                    },
+                    timeout=15.0
+                )
+                if response.status_code == 200:
+                    log.info(f"WhatsApp enviado a {to}")
+                    return True
+                else:
+                    log.error(f"Error enviando WhatsApp: {response.status_code} {response.text}")
+                    return False
+        except Exception as e:
+            log.error(f"Error enviando WhatsApp: {e}")
+            return False
+
+    # ==================================================================
     # LIMPIEZA PERIODICA
     # ==================================================================
 
     async def _limpiar_feedback_viejo(self):
-        """Limpia feedback pendiente de mas de 30 minutos."""
+        """Limpia feedback pendiente y mapeos de WhatsApp viejos."""
         while True:
             await asyncio.sleep(300)  # Cada 5 minutos
             ahora = datetime.now()
+
+            # Limpiar feedback viejo (30 min)
             ids_a_eliminar = []
             for msg_id, data in self._pending_feedback.items():
                 ts = data.get("timestamp")
@@ -675,8 +757,19 @@ class ConsularBot(discord.Client):
                     ids_a_eliminar.append(msg_id)
             for msg_id in ids_a_eliminar:
                 del self._pending_feedback[msg_id]
-            if ids_a_eliminar:
-                log.info(f"Feedback viejo limpiado: {len(ids_a_eliminar)} entradas")
+
+            # Limpiar mapeos de WhatsApp viejos (24 horas)
+            wa_a_eliminar = []
+            for msg_id, data in self._whatsapp_messages.items():
+                ts = data.get("timestamp")
+                if isinstance(ts, datetime) and (ahora - ts) > timedelta(hours=24):
+                    wa_a_eliminar.append(msg_id)
+            for msg_id in wa_a_eliminar:
+                del self._whatsapp_messages[msg_id]
+
+            total = len(ids_a_eliminar) + len(wa_a_eliminar)
+            if total:
+                log.info(f"Limpieza: {len(ids_a_eliminar)} feedback + {len(wa_a_eliminar)} WhatsApp")
 
 
 # ============================================================================
