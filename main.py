@@ -117,6 +117,10 @@ async def run_discord_bot():
             cita_bot_estado=cita_bot_estado
         )
 
+        # Compartir referencia del bot con el API server para WhatsApp → Discord
+        from api_server import set_discord_bot
+        set_discord_bot(bot)
+
         # Crear task para relay de notificaciones
         asyncio.create_task(relay_notificaciones(bot, notification_queue))
 
