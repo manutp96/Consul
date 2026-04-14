@@ -23,6 +23,7 @@ log = logging.getLogger("Discord")
 
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
 DISCORD_CHANNEL_ID = int(os.environ.get("DISCORD_CHANNEL_ID", "0"))
+DISCORD_WHATSAPP_CHANNEL_ID = int(os.environ.get("DISCORD_WHATSAPP_CHANNEL_ID", "0"))
 DISCORD_GUILD_ID = os.environ.get("DISCORD_GUILD_ID", "")
 
 
@@ -600,6 +601,63 @@ class ConsularBot(discord.Client):
 
         except Exception as e:
             log.error(f"Error enviando notificacion: {e}")
+
+    # ==================================================================
+    # WHATSAPP → DISCORD
+    # ==================================================================
+
+    async def enviar_mensaje_whatsapp(self, datos: dict):
+        """Reenvía un mensaje de WhatsApp a Discord con sugerencia de IA."""
+        if not DISCORD_WHATSAPP_CHANNEL_ID:
+            log.warning("DISCORD_WHATSAPP_CHANNEL_ID no configurado")
+            return
+
+        try:
+            channel = self.get_channel(DISCORD_WHATSAPP_CHANNEL_ID)
+            if not channel:
+                channel = await self.fetch_channel(DISCORD_WHATSAPP_CHANNEL_ID)
+
+            sender = datos.get("sender", "Desconocido")
+            sender_name = datos.get("sender_name", "")
+            texto = datos.get("texto", "")
+            sugerencia = datos.get("sugerencia", "")
+            timestamp = datos.get("timestamp", "")
+
+            # Formatear nombre del remitente
+            nombre_display = sender_name if sender_name else f"+{sender}"
+            if sender_name:
+                nombre_display = f"{sender_name} (+{sender})"
+
+            # Embed principal con el mensaje del cliente
+            embed = discord.Embed(
+                title=f"📱 WhatsApp — {nombre_display}",
+                description=f"**Mensaje:**\n{texto}",
+                color=discord.Color.green(),
+                timestamp=datetime.now()
+            )
+            embed.set_footer(text=f"Recibido a las {timestamp}")
+
+            await channel.send(embed=embed)
+
+            # Embed con la sugerencia del bot (separado para que sea fácil copiar)
+            if sugerencia:
+                # Truncar si es muy largo
+                if len(sugerencia) > 1900:
+                    sugerencia = sugerencia[:1900] + "..."
+
+                embed_sugerencia = discord.Embed(
+                    title="🤖 Sugerencia del Bot",
+                    description=sugerencia,
+                    color=discord.Color.blue()
+                )
+                embed_sugerencia.set_footer(text="Copiar y pegar en WhatsApp Business, o responder manualmente")
+
+                await channel.send(embed=embed_sugerencia)
+
+            log.info(f"Mensaje de WhatsApp reenviado a Discord: {nombre_display}")
+
+        except Exception as e:
+            log.error(f"Error reenviando WhatsApp a Discord: {e}")
 
     # ==================================================================
     # LIMPIEZA PERIODICA

@@ -86,6 +86,16 @@ async def verificar_api_key(request: Request):
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "rh_tramites_verify_2024")
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
 WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID", "")
+DISCORD_WHATSAPP_CHANNEL_ID = int(os.environ.get("DISCORD_WHATSAPP_CHANNEL_ID", "0"))
+
+# Referencia al Discord bot (se setea desde main.py)
+_discord_bot = None
+
+
+def set_discord_bot(bot):
+    """Llamado desde main.py para compartir el Discord bot."""
+    global _discord_bot
+    _discord_bot = bot
 
 
 @app.get("/health")
@@ -120,9 +130,12 @@ async def meta_webhook_verify(request: Request):
 
 @app.post("/webhook/meta")
 async def meta_webhook_receive(request: Request):
-    """Recibe mensajes de WhatsApp via Meta Cloud API."""
+    """
+    Recibe mensajes de WhatsApp via Meta Cloud API.
+    En vez de auto-responder, reenvía el mensaje a Discord con una sugerencia de IA.
+    Los empleados responden al cliente desde WhatsApp Business directamente.
+    """
     try:
-        import httpx
         payload = await request.json()
 
         # Extraer mensaje
@@ -137,34 +150,48 @@ async def meta_webhook_receive(request: Request):
         msg = messages[0]
         texto = msg.get("text", {}).get("body", "")
         sender = msg.get("from", "")
+        msg_type = msg.get("type", "text")
+
+        # Obtener nombre del contacto si está disponible
+        contacts = value.get("contacts", [])
+        sender_name = contacts[0].get("profile", {}).get("name", "") if contacts else ""
 
         if not texto:
-            return {"status": "no_text"}
+            # Si no es texto (imagen, audio, etc), notificar igual
+            texto = f"[Mensaje de tipo: {msg_type}]"
 
-        log.info(f"WhatsApp Meta de {sender}: {texto[:80]}")
+        log.info(f"WhatsApp de {sender_name or sender}: {texto[:80]}")
 
-        # Responder con IA
-        respuesta_texto = await responder(texto, plataforma="whatsapp")
+        # Generar sugerencia con IA
+        sugerencia = ""
+        try:
+            sugerencia = await responder(texto, plataforma="raw")
+            if isinstance(sugerencia, list):
+                sugerencia = "\n".join(sugerencia)
+        except Exception as e:
+            log.error(f"Error generando sugerencia IA: {e}")
+            sugerencia = "No se pudo generar sugerencia."
 
-        # Enviar respuesta via Meta Cloud API
-        if WHATSAPP_TOKEN and WHATSAPP_PHONE_ID:
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"https://graph.facebook.com/v25.0/{WHATSAPP_PHONE_ID}/messages",
-                    headers={
-                        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "messaging_product": "whatsapp",
-                        "to": sender,
-                        "type": "text",
-                        "text": {"body": respuesta_texto}
-                    }
-                )
-                log.info(f"Respuesta enviada a {sender}")
+        # Reenviar a Discord
+        if _discord_bot and DISCORD_WHATSAPP_CHANNEL_ID:
+            import asyncio
+            try:
+                await _discord_bot.enviar_mensaje_whatsapp({
+                    "sender": sender,
+                    "sender_name": sender_name,
+                    "texto": texto,
+                    "sugerencia": sugerencia,
+                    "timestamp": datetime.now().strftime("%H:%M:%S"),
+                })
+                log.info(f"Mensaje reenviado a Discord")
+            except Exception as e:
+                log.error(f"Error reenviando a Discord: {e}")
+        else:
+            log.warning("Discord bot o DISCORD_WHATSAPP_CHANNEL_ID no configurado")
 
-        return {"status": "ok", "sender": sender}
+        # NO responder automaticamente al cliente — los empleados responden desde WhatsApp Business
+
+        return {"status": "ok", "sender": sender, "forwarded_to_discord": True}
 
     except Exception as e:
         log.error(f"Error en webhook Meta: {e}")
