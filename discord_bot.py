@@ -453,8 +453,14 @@ class ConsularBot(discord.Client):
             if ref_id in self._whatsapp_messages:
                 wa_data = self._whatsapp_messages[ref_id]
 
-                # Check if employee is mentioning the bot (re-engagement)
-                if self.user.mentioned_in(message) and not message.mention_everyone:
+                # Check if employee TYPED @bot in the message text (re-engagement)
+                # Discord adds the bot to message.mentions automatically when replying
+                # to a bot message (with "@ ON"), so we can't rely on message.mentions.
+                # Instead, check if the bot's mention string is in the raw message content.
+                bot_mention_str = f'<@{self.user.id}>'
+                bot_mention_str2 = f'<@!{self.user.id}>'
+                bot_typed_in_text = bot_mention_str in message.content or bot_mention_str2 in message.content
+                if bot_typed_in_text and not message.mention_everyone:
                     # Employee wants a new/different suggestion from the bot
                     instruccion = message.content
                     for mention in message.mentions:
