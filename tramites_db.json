@@ -913,11 +913,13 @@
           ],
           "procedimiento": "Cita para Registro Civil (solo si entro en plazo antes del 23 de octubre de 2025).",
           "notas": [
-            "PLAZO CERRADO desde el 23 de octubre de 2025. No se admiten mas solicitudes de cita.",
-            "Si solicito cita antes del cierre y recibio justificante, recibira credenciales para escoger fecha y hora.",
-            "Al presentarse debe aportar justificante de que solicito cita previa dentro del plazo de vigencia."
+            "PLAZO CERRADO desde el 23 de octubre de 2025. No se admiten mas solicitudes de cita nuevas.",
+            "IMPORTANTE: Si gestiono la solicitud ANTES de que cerrara el plazo de la Ley, el tramite sigue vigente. En ese caso debera esperar a recibir las credenciales que le enviaran desde el consulado para poder escoger fecha y hora de cita.",
+            "Si YA tiene las credenciales del consulado, RH Tramites Consulares puede gestionarle la cita.",
+            "Al presentarse debe aportar justificante de que solicito cita previa dentro del plazo de vigencia.",
+            "Preguntas clave para el cliente que consulta por LMD: 1) Gestiono la solicitud antes del 22/10/2025? 2) Ya recibio las credenciales del consulado? Si las tiene, podemos gestionarle la cita."
           ],
-          "keywords": ["memoria democratica", "ley memoria", "nietos", "abuelos espanoles", "memoria historica", "LMD", "plazo", "cita", "cerrado", "opcion nacionalidad"]
+          "keywords": ["memoria democratica", "ley memoria", "nietos", "abuelos espanoles", "memoria historica", "LMD", "plazo", "cita", "cerrado", "opcion nacionalidad", "credenciales"]
         },
         {
           "id": "4.6",
