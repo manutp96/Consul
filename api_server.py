@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from ai_assistant import responder, buscar_tramite_local, consultar_tramite
+from ai_assistant import responder, buscar_tramite_local, consultar_tramite, consultar_conversacional
 from kb_manager import (
     invalidar_cache, obtener_feedback_pendiente, marcar_feedback,
     corregir_tramite as kb_corregir_tramite, agregar_nota as kb_agregar_nota
@@ -86,7 +86,21 @@ async def verificar_api_key(request: Request):
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "rh_tramites_verify_2024")
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
 WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID", "")
-DISCORD_WHATSAPP_CHANNEL_ID = int(os.environ.get("DISCORD_WHATSAPP_CHANNEL_ID", "0"))
+
+# Canales de WhatsApp en Discord (multi-canal)
+DISCORD_WA_CHANNELS = []
+for key in ["DISCORD_WA_CHANNEL_1", "DISCORD_WA_CHANNEL_2", "DISCORD_WA_CHANNEL_3"]:
+    val = os.environ.get(key, "")
+    if val:
+        DISCORD_WA_CHANNELS.append(int(val))
+
+# Backward compat: si no hay canales nuevos, usar el viejo
+if not DISCORD_WA_CHANNELS:
+    old_channel = int(os.environ.get("DISCORD_WHATSAPP_CHANNEL_ID", "0"))
+    if old_channel:
+        DISCORD_WA_CHANNELS.append(old_channel)
+
+DISCORD_WHATSAPP_CHANNEL_ID = DISCORD_WA_CHANNELS[0] if DISCORD_WA_CHANNELS else 0
 
 # Referencia al Discord bot (se setea desde main.py)
 _discord_bot = None
@@ -132,8 +146,8 @@ async def meta_webhook_verify(request: Request):
 async def meta_webhook_receive(request: Request):
     """
     Recibe mensajes de WhatsApp via Meta Cloud API.
-    En vez de auto-responder, reenvía el mensaje a Discord con una sugerencia de IA.
-    Los empleados responden al cliente desde WhatsApp Business directamente.
+    Flujo: guardar en SQLite -> generar sugerencia conversacional -> reenviar a Discord.
+    Los empleados responden al cliente desde Discord.
     """
     try:
         payload = await request.json()
@@ -152,29 +166,43 @@ async def meta_webhook_receive(request: Request):
         sender = msg.get("from", "")
         msg_type = msg.get("type", "text")
 
-        # Obtener nombre del contacto si está disponible
+        # Obtener nombre del contacto si esta disponible
         contacts = value.get("contacts", [])
         sender_name = contacts[0].get("profile", {}).get("name", "") if contacts else ""
 
         if not texto:
-            # Si no es texto (imagen, audio, etc), notificar igual
             texto = f"[Mensaje de tipo: {msg_type}]"
 
         log.info(f"WhatsApp de {sender_name or sender}: {texto[:80]}")
 
-        # Generar sugerencia con IA
+        # 1. Obtener o crear conversacion (asigna canal por carga)
+        import conversation_db
+        conv = await conversation_db.get_or_create_conversation(sender, sender_name)
+        conv_id = conv["id"]
+        channel_id = conv["discord_channel_id"]
+
+        # 2. Guardar mensaje del cliente
+        await conversation_db.add_message(conv_id, "client", texto)
+
+        # 3. Obtener historial reciente
+        history = await conversation_db.get_recent_messages(conv_id, limit=20)
+
+        # 4. Generar sugerencia conversacional (con contexto inteligente)
         sugerencia = ""
         try:
-            sugerencia = await responder(texto, plataforma="raw")
-            if isinstance(sugerencia, list):
-                sugerencia = "\n".join(sugerencia)
+            sugerencia = await consultar_conversacional(
+                client_message=texto,
+                conversation_history=history,
+            )
         except Exception as e:
-            log.error(f"Error generando sugerencia IA: {e}")
+            log.error(f"Error generando sugerencia conversacional: {e}")
             sugerencia = "No se pudo generar sugerencia."
 
-        # Reenviar a Discord
-        if _discord_bot and DISCORD_WHATSAPP_CHANNEL_ID:
-            import asyncio
+        # 5. Guardar sugerencia del bot
+        await conversation_db.add_message(conv_id, "bot", sugerencia)
+
+        # 6. Reenviar a Discord (canal asignado)
+        if _discord_bot and channel_id:
             try:
                 await _discord_bot.enviar_mensaje_whatsapp({
                     "sender": sender,
@@ -182,16 +210,14 @@ async def meta_webhook_receive(request: Request):
                     "texto": texto,
                     "sugerencia": sugerencia,
                     "timestamp": datetime.now().strftime("%H:%M:%S"),
-                })
-                log.info(f"Mensaje reenviado a Discord")
+                }, channel_id=channel_id)
+                log.info(f"Mensaje reenviado a Discord canal {channel_id}")
             except Exception as e:
                 log.error(f"Error reenviando a Discord: {e}")
         else:
-            log.warning("Discord bot o DISCORD_WHATSAPP_CHANNEL_ID no configurado")
+            log.warning("Discord bot o canales WhatsApp no configurados")
 
-        # NO responder automaticamente al cliente — los empleados responden desde WhatsApp Business
-
-        return {"status": "ok", "sender": sender, "forwarded_to_discord": True}
+        return {"status": "ok", "sender": sender, "channel": channel_id, "forwarded_to_discord": True}
 
     except Exception as e:
         log.error(f"Error en webhook Meta: {e}")

@@ -16,15 +16,26 @@ from datetime import datetime, timedelta
 import discord
 from discord import app_commands
 
-from ai_assistant import responder, buscar_tramite_local, formatear_resultado_local, procesar_mensaje_natural, formatear_respuesta_discord
+from ai_assistant import responder, buscar_tramite_local, formatear_resultado_local, procesar_mensaje_natural, formatear_respuesta_discord, consultar_conversacional
 from kb_manager import agregar_info, corregir_tramite, agregar_nota, guardar_feedback
 
 log = logging.getLogger("Discord")
 
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
 DISCORD_CHANNEL_ID = int(os.environ.get("DISCORD_CHANNEL_ID", "0"))
-DISCORD_WHATSAPP_CHANNEL_ID = int(os.environ.get("DISCORD_WHATSAPP_CHANNEL_ID", "0"))
 DISCORD_GUILD_ID = os.environ.get("DISCORD_GUILD_ID", "")
+
+# Multi-canal WhatsApp
+DISCORD_WA_CHANNELS = []
+for _key in ["DISCORD_WA_CHANNEL_1", "DISCORD_WA_CHANNEL_2", "DISCORD_WA_CHANNEL_3"]:
+    _val = os.environ.get(_key, "")
+    if _val:
+        DISCORD_WA_CHANNELS.append(int(_val))
+if not DISCORD_WA_CHANNELS:
+    _old = int(os.environ.get("DISCORD_WHATSAPP_CHANNEL_ID", "0"))
+    if _old:
+        DISCORD_WA_CHANNELS.append(_old)
+DISCORD_WHATSAPP_CHANNEL_ID = DISCORD_WA_CHANNELS[0] if DISCORD_WA_CHANNELS else 0
 
 
 # ============================================================================
@@ -435,13 +446,55 @@ class ConsularBot(discord.Client):
             return
 
         # ============================================================
-        # WHATSAPP: reply a mensaje de cliente → enviar por WhatsApp (PRIORIDAD)
+        # WHATSAPP: reply a mensaje de cliente → enviar por WhatsApp o re-engage bot
         # ============================================================
         if message.reference and message.reference.message_id:
             ref_id = message.reference.message_id
             if ref_id in self._whatsapp_messages:
                 wa_data = self._whatsapp_messages[ref_id]
-                # Extraer texto sin menciones al bot
+
+                # Check if employee is mentioning the bot (re-engagement)
+                if self.user.mentioned_in(message) and not message.mention_everyone:
+                    # Employee wants a new/different suggestion from the bot
+                    instruccion = message.content
+                    for mention in message.mentions:
+                        instruccion = instruccion.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
+                    instruccion = instruccion.strip()
+
+                    if instruccion:
+                        async with message.channel.typing():
+                            try:
+                                import conversation_db
+                                conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
+                                history = []
+                                if conv:
+                                    history = await conversation_db.get_recent_messages(conv["id"], limit=20)
+
+                                nueva_sugerencia = await consultar_conversacional(
+                                    client_message=history[-1]["content"] if history else "",
+                                    conversation_history=history,
+                                    employee_context=instruccion,
+                                )
+
+                                if conv:
+                                    await conversation_db.add_message(conv["id"], "bot", nueva_sugerencia)
+
+                                # Post new suggestion embed
+                                embed = discord.Embed(
+                                    title="🤖 Nueva sugerencia del Bot",
+                                    description=nueva_sugerencia[:1900],
+                                    color=discord.Color.blue()
+                                )
+                                embed.set_footer(text=f"Instruccion: {instruccion[:100]}")
+                                new_msg = await message.channel.send(embed=embed)
+                                self._whatsapp_messages[new_msg.id] = wa_data
+
+                            except Exception as e:
+                                log.error(f"Error en re-engagement del bot: {e}")
+                                await message.reply(f"Error generando nueva sugerencia: {e}")
+                    return
+
+                # Employee is replying to client (no bot mention) → send via WhatsApp
                 respuesta_texto = message.content
                 for mention in message.mentions:
                     respuesta_texto = respuesta_texto.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
@@ -452,6 +505,15 @@ class ConsularBot(discord.Client):
                     if enviado:
                         await message.add_reaction("\u2705")
                         log.info(f"Respuesta enviada por WhatsApp a {wa_data['sender']}: {respuesta_texto[:50]}")
+
+                        # Guardar respuesta del empleado en conversation_db
+                        try:
+                            import conversation_db
+                            conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
+                            if conv:
+                                await conversation_db.add_message(conv["id"], "employee", respuesta_texto)
+                        except Exception as e:
+                            log.error(f"Error guardando respuesta en DB: {e}")
                     else:
                         await message.add_reaction("\u274c")
                         await message.reply("Error enviando el mensaje por WhatsApp. Verificar configuracion.")
@@ -630,16 +692,17 @@ class ConsularBot(discord.Client):
     # WHATSAPP → DISCORD
     # ==================================================================
 
-    async def enviar_mensaje_whatsapp(self, datos: dict):
+    async def enviar_mensaje_whatsapp(self, datos: dict, channel_id: int = 0):
         """Reenvía un mensaje de WhatsApp a Discord con sugerencia de IA."""
-        if not DISCORD_WHATSAPP_CHANNEL_ID:
-            log.warning("DISCORD_WHATSAPP_CHANNEL_ID no configurado")
+        target_channel_id = channel_id or DISCORD_WHATSAPP_CHANNEL_ID
+        if not target_channel_id:
+            log.warning("Ningun canal de WhatsApp configurado")
             return
 
         try:
-            channel = self.get_channel(DISCORD_WHATSAPP_CHANNEL_ID)
+            channel = self.get_channel(target_channel_id)
             if not channel:
-                channel = await self.fetch_channel(DISCORD_WHATSAPP_CHANNEL_ID)
+                channel = await self.fetch_channel(target_channel_id)
 
             sender = datos.get("sender", "Desconocido")
             sender_name = datos.get("sender_name", "")

@@ -58,10 +58,11 @@ def get_system_prompt() -> str:
 
 def invalidar_cache():
     """Invalida el cache. La proxima lectura recarga de disco."""
-    global _tramites_data, _system_prompt
+    global _tramites_data, _system_prompt, _system_prompt_base
     with _lock:
         _tramites_data = None
         _system_prompt = None
+        _system_prompt_base = None
     log.info("Cache invalidado")
 
 
@@ -69,8 +70,55 @@ def invalidar_cache():
 # SYSTEM PROMPT
 # ============================================================================
 
+_system_prompt_base: str | None = None
+
+
+def get_system_prompt_base() -> str:
+    """Retorna el prompt base SIN el contenido completo de README_TRAMITES.md.
+    Usado por el modo conversacional para inyectar solo tramites relevantes."""
+    global _system_prompt_base
+    if _system_prompt_base is None:
+        _system_prompt_base = _construir_system_prompt_base()
+        log.info(f"System prompt base construido ({len(_system_prompt_base)} chars)")
+    return _system_prompt_base
+
+
+def _construir_system_prompt_base() -> str:
+    """Prompt base con instrucciones generales, sin contenido de tramites."""
+    prompt = """Eres el asistente virtual de RH Tramites Consulares, una empresa que gestiona
+citas y tramites en el Consulado General de Espana en Montevideo, Uruguay.
+
+Tu rol:
+- Responder preguntas sobre tramites consulares de forma clara y precisa
+- Informar sobre documentos necesarios, procedimientos y requisitos
+- Ser amable, profesional y responder siempre en espanol
+- Si no sabes algo o la informacion no esta en la base de datos, indicarlo honestamente
+- Nunca inventar requisitos o procedimientos
+- Cuando sea relevante, mencionar que el cliente puede contactar a RH Tramites Consulares
+  por WhatsApp al +598 91 090 980 para gestion de citas
+
+Responde de forma concisa pero completa. Usa listas cuando enumeres documentos.
+Si la pregunta no esta relacionada con tramites consulares, indica amablemente que
+solo puedes ayudar con temas consulares."""
+
+    # Inyectar correcciones recientes
+    correcciones = obtener_correcciones_recientes(limit=10)
+    if correcciones:
+        prompt += "\n\nCORRECCIONES RECIENTES:\n"
+        for c in correcciones:
+            prompt += f"- Pregunta: {c.get('pregunta', '')}\n  Correccion: {c.get('correccion', '')}\n"
+
+    return prompt
+
+
+def get_category_names() -> list[str]:
+    """Retorna lista de nombres de categorias de la base de datos."""
+    data = get_tramites_data()
+    return [cat.get("nombre", "") for cat in data.get("categorias", [])]
+
+
 def _construir_system_prompt() -> str:
-    """Construye el system prompt completo."""
+    """Construye el system prompt completo (con README). Usado por Discord commands."""
     contenido_tramites = ""
     if TRAMITES_MD.exists():
         with open(TRAMITES_MD, "r", encoding="utf-8") as f:
@@ -463,6 +511,7 @@ def marcar_feedback(feedback_id: str, nuevo_estado: str) -> dict:
 
 def _invalidar_sin_lock():
     """Invalida cache sin adquirir lock (usar solo dentro de 'with _lock')."""
-    global _tramites_data, _system_prompt
+    global _tramites_data, _system_prompt, _system_prompt_base
     _tramites_data = None
     _system_prompt = None
+    _system_prompt_base = None

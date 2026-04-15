@@ -174,8 +174,29 @@ def signal_handler(sig, frame):
 # PUNTO DE ENTRADA PRINCIPAL
 # ============================================================================
 
+async def cleanup_stale_conversations():
+    """Tarea periodica: marca conversaciones inactivas cada hora."""
+    import conversation_db
+    while not shutdown_event.is_set():
+        await asyncio.sleep(3600)  # Cada hora
+        try:
+            await conversation_db.mark_stale_conversations_inactive()
+        except Exception as e:
+            log.error(f"Error en cleanup de conversaciones: {e}")
+
+
 async def async_main():
     """Main asincrono: corre Discord + API en paralelo."""
+
+    # Inicializar SQLite para conversaciones WhatsApp
+    try:
+        import conversation_db
+        from api_server import DISCORD_WA_CHANNELS
+        await conversation_db.init_db(DISCORD_WA_CHANNELS)
+        log.info(f"Conversation DB inicializada ({len(DISCORD_WA_CHANNELS)} canales WhatsApp)")
+    except Exception as e:
+        log.error(f"Error inicializando conversation DB: {e}", exc_info=True)
+
     tasks = []
 
     if ENABLE_API:
@@ -188,10 +209,12 @@ async def async_main():
     else:
         log.info("Discord bot desactivado (sin DISCORD_TOKEN o ENABLE_DISCORD=false)")
 
+    # Tarea de limpieza de conversaciones inactivas
+    tasks.append(asyncio.create_task(cleanup_stale_conversations()))
+
     if tasks:
         await asyncio.gather(*tasks)
     else:
-        # Si no hay servicios async, solo mantener vivo para el CitaBot thread
         log.info("Solo CitaBot activo (sin servicios async)")
         while not shutdown_event.is_set():
             await asyncio.sleep(5)
