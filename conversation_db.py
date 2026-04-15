@@ -90,7 +90,8 @@ async def init_db(channel_ids: list[int]):
 
 async def get_or_create_conversation(phone_number: str, sender_name: str = "") -> dict:
     """
-    Get existing conversation or create new one with least-loaded channel.
+    Get existing conversation or create new one.
+    For new conversations, discord_channel_id=0 signals that a channel needs to be created.
     Returns dict with id, phone_number, sender_name, discord_channel_id, is_active.
     """
     async with aiosqlite.connect(DB_PATH) as db:
@@ -110,26 +111,15 @@ async def get_or_create_conversation(phone_number: str, sender_name: str = "") -
                 "UPDATE conversations SET last_message_at = datetime('now'), is_active = 1, sender_name = CASE WHEN sender_name = '' THEN ? ELSE sender_name END WHERE id = ?",
                 (sender_name, conv["id"])
             )
-            # If was inactive, increment channel count
             if not conv["is_active"]:
-                await db.execute(
-                    "UPDATE channel_assignments SET active_conversations = active_conversations + 1 WHERE channel_id = ?",
-                    (conv["discord_channel_id"],)
-                )
                 conv["is_active"] = 1
             await db.commit()
             return conv
 
-        # Create new - assign to least loaded channel
-        channel_id = await _get_least_loaded_channel(db)
-
+        # Create new — channel_id=0 means "needs a Discord channel"
         await db.execute(
-            "INSERT INTO conversations (phone_number, sender_name, discord_channel_id) VALUES (?, ?, ?)",
-            (phone_number, sender_name, channel_id)
-        )
-        await db.execute(
-            "UPDATE channel_assignments SET active_conversations = active_conversations + 1 WHERE channel_id = ?",
-            (channel_id,)
+            "INSERT INTO conversations (phone_number, sender_name, discord_channel_id) VALUES (?, ?, 0)",
+            (phone_number, sender_name)
         )
         await db.commit()
 
@@ -139,8 +129,29 @@ async def get_or_create_conversation(phone_number: str, sender_name: str = "") -
         )
         row = await cursor.fetchone()
         conv = dict(row)
-        log.info(f"New conversation for {phone_number} assigned to channel {channel_id}")
+        log.info(f"New conversation for {phone_number} (pending channel creation)")
         return conv
+
+
+async def assign_channel(conversation_id: int, discord_channel_id: int):
+    """Assign a Discord channel to a conversation after channel creation."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE conversations SET discord_channel_id = ? WHERE id = ?",
+            (discord_channel_id, conversation_id)
+        )
+        await db.commit()
+    log.info(f"Conversation {conversation_id} assigned to channel {discord_channel_id}")
+
+
+async def get_all_wa_channel_ids() -> set[int]:
+    """Get all Discord channel IDs that are assigned to WhatsApp conversations."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT DISTINCT discord_channel_id FROM conversations WHERE discord_channel_id != 0"
+        )
+        rows = await cursor.fetchall()
+        return {row[0] for row in rows}
 
 
 async def _get_least_loaded_channel(db) -> int:

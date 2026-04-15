@@ -175,11 +175,16 @@ async def meta_webhook_receive(request: Request):
 
         log.info(f"WhatsApp de {sender_name or sender}: {texto[:80]}")
 
-        # 1. Obtener o crear conversacion (asigna canal por carga)
+        # 1. Obtener o crear conversacion
         import conversation_db
         conv = await conversation_db.get_or_create_conversation(sender, sender_name)
         conv_id = conv["id"]
         channel_id = conv["discord_channel_id"]
+
+        # 2. Si es conversacion nueva (channel_id=0), crear canal de Discord
+        if channel_id == 0 and _discord_bot:
+            channel_id = await _discord_bot.get_or_create_client_channel(sender, sender_name)
+            await conversation_db.assign_channel(conv_id, channel_id)
 
         # 2. Guardar mensaje del cliente
         await conversation_db.add_message(conv_id, "client", texto)

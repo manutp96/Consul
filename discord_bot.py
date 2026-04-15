@@ -52,6 +52,7 @@ class ConsularBot(discord.Client):
         self.cita_bot_estado = cita_bot_estado or {}
         self._pending_feedback = {}  # message_id -> {pregunta, respuesta, usuario, timestamp, estado}
         self._whatsapp_messages = {}  # message_id -> {sender: "598XXXXXXX", sender_name: "...", timestamp: datetime}
+        self._wa_channel_ids: set[int] = set()  # All Discord channel IDs used for WhatsApp
         self._setup_commands()
 
     def _setup_commands(self):
@@ -395,6 +396,17 @@ class ConsularBot(discord.Client):
         log.info(f"Bot conectado como {self.user} (ID: {self.user.id})")
         log.info(f"Servidores: {len(self.guilds)}")
 
+        # Load existing WhatsApp channel IDs from DB + legacy config
+        try:
+            import conversation_db
+            self._wa_channel_ids = await conversation_db.get_all_wa_channel_ids()
+            # Also include legacy fixed channels for backward compat
+            self._wa_channel_ids.update(DISCORD_WA_CHANNELS)
+            log.info(f"Loaded {len(self._wa_channel_ids)} WhatsApp channel IDs")
+        except Exception as e:
+            log.error(f"Error loading WA channel IDs: {e}")
+            self._wa_channel_ids = set(DISCORD_WA_CHANNELS)
+
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
@@ -448,7 +460,7 @@ class ConsularBot(discord.Client):
         # ============================================================
         # WHATSAPP: reply en canal de WhatsApp → enviar por WhatsApp o re-engage bot
         # ============================================================
-        is_wa_channel = message.channel.id in DISCORD_WA_CHANNELS
+        is_wa_channel = message.channel.id in self._wa_channel_ids
         if message.reference and message.reference.message_id and is_wa_channel:
             ref_id = message.reference.message_id
             wa_data = self._whatsapp_messages.get(ref_id)
@@ -877,6 +889,59 @@ class ConsularBot(discord.Client):
                 return phone, sender_name
 
         return None, ""
+
+    # ==================================================================
+    # CREAR CANAL DE DISCORD PARA CLIENTE DE WHATSAPP
+    # ==================================================================
+
+    async def get_or_create_client_channel(self, phone_number: str, sender_name: str = "") -> int:
+        """
+        Get existing or create new Discord channel for a WhatsApp client.
+        Returns the Discord channel ID.
+        """
+        import re
+        import conversation_db
+
+        # Check if conversation already has a channel
+        conv = await conversation_db.get_conversation_by_phone(phone_number)
+        if conv and conv["discord_channel_id"] != 0:
+            return conv["discord_channel_id"]
+
+        # Create new channel
+        guild = self.guilds[0] if self.guilds else None
+        if not guild and DISCORD_GUILD_ID:
+            guild = self.get_guild(int(DISCORD_GUILD_ID))
+        if not guild:
+            log.error("No guild available to create channel")
+            return DISCORD_WHATSAPP_CHANNEL_ID  # Fallback to legacy
+
+        # Sanitize channel name: "wa-nombre-del-cliente" or "wa-598XXXXXXX"
+        if sender_name:
+            clean_name = re.sub(r'[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ\s-]', '', sender_name)
+            clean_name = clean_name.strip().lower().replace(' ', '-')[:40]
+            channel_name = f"wa-{clean_name}"
+        else:
+            channel_name = f"wa-{phone_number}"
+
+        try:
+            channel = await guild.create_text_channel(
+                name=channel_name,
+                topic=f"WhatsApp: {sender_name} (+{phone_number})",
+            )
+            log.info(f"Created Discord channel #{channel.name} (ID: {channel.id}) for {phone_number}")
+
+            # Update DB with channel ID
+            if conv:
+                await conversation_db.assign_channel(conv["id"], channel.id)
+
+            # Track channel ID in memory
+            self._wa_channel_ids.add(channel.id)
+
+            return channel.id
+
+        except Exception as e:
+            log.error(f"Error creating channel for {phone_number}: {e}")
+            return DISCORD_WHATSAPP_CHANNEL_ID  # Fallback to legacy
 
     # ==================================================================
     # ENVIAR WHATSAPP VIA META CLOUD API
