@@ -564,9 +564,11 @@ Quién puede solicitarlo: Nacidos fuera de Espana de padre/madre/abuelo/abuela o
 Documentos necesarios:
 Documentacion especifica segun Anexo (I, II, III o IV segun el caso)
 Procedimiento: Cita para Registro Civil (solo si entro en plazo antes del 23 de octubre de 2025).
-Nota importante: PLAZO CERRADO desde el 23 de octubre de 2025. No se admiten mas solicitudes de cita.
-Nota importante: Si solicito cita antes del cierre y recibio justificante, recibira credenciales para escoger fecha y hora.
+Nota importante: PLAZO CERRADO desde el 23 de octubre de 2025. No se admiten mas solicitudes de cita nuevas.
+Nota importante: IMPORTANTE: Si gestiono la solicitud ANTES de que cerrara el plazo de la Ley, el tramite sigue vigente. En ese caso debera esperar a recibir las credenciales que le enviaran desde el consulado para poder escoger fecha y hora de cita.
+Nota importante: Si YA tiene las credenciales del consulado, RH Tramites Consulares puede gestionarle la cita.
 Nota importante: Al presentarse debe aportar justificante de que solicito cita previa dentro del plazo de vigencia.
+Nota importante: Preguntas clave para el cliente que consulta por LMD: 1) Gestiono la solicitud antes del 22/10/2025? 2) Ya recibio las credenciales del consulado? Si las tiene, podemos gestionarle la cita.
 
 4.6 LMD - SUPUESTO 1: HIJOS Y NIETOS DE ESPANOLES (ANEXO I)
 Descripción: Pueden optar a la nacionalidad espanola (Anexo I): los nacidos fuera de Espana de padre o madre, abuelo o abuela, que originariamente hubieran sido espanoles. Tambien los nacidos fuera de Espana de padre o madre, abuelo o abuela, que originariamente hubieran sido espanoles y que, como consecuencia de haber sufrido exilio por razones politicas, ideologicas, de creencia o de orientacion e identidad sexual, hubieran perdido o renunciado a la nacionalidad espanola.
