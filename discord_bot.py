@@ -782,60 +782,80 @@ class ConsularBot(discord.Client):
     async def _recover_wa_data(self, message: discord.Message) -> dict | None:
         """
         Recover WhatsApp sender data from a referenced Discord message.
-        Searches the embed title for a phone number pattern, or looks up
-        the conversation DB by scanning recent embeds in the reply chain.
+        Strategy:
+        1. Check the referenced message embeds for phone number (title or footer)
+        2. If it's a suggestion embed (no phone), search nearby messages for client embed
+        3. Fallback: lookup conversation_db by channel
         """
         import re
+
         try:
             ref_msg = await message.channel.fetch_message(message.reference.message_id)
-        except Exception:
+        except Exception as e:
+            log.error(f"Could not fetch referenced message {message.reference.message_id}: {e}")
             return None
 
-        # Check embeds in the referenced message for phone number
-        phone = None
-        sender_name = ""
-        for embed in ref_msg.embeds:
-            title = embed.title or ""
-            footer_text = embed.footer.text if embed.footer else ""
+        phone, sender_name = self._extract_phone_from_embeds(ref_msg.embeds)
 
-            # 1. Client embed: "WhatsApp — nombre (+598XXXXXXX)"
-            match = re.search(r'\+?(\d{10,15})', title)
-            if match:
-                phone = match.group(1)
-                name_match = re.search(r'—\s*(.+?)\s*\(', title)
-                if name_match:
-                    sender_name = name_match.group(1).strip()
-                break
-
-            # 2. Suggestion embed: footer has "Para: +598XXXXXXX" or "Para: nombre (+598XXXXXXX)"
-            footer_phone = re.search(r'Para:\s*\+?(\d{10,15})', footer_text)
-            if not footer_phone:
-                footer_phone = re.search(r'Para:.*\+?(\d{10,15})', footer_text)
-            if footer_phone:
-                phone = footer_phone.group(1)
-                name_match = re.search(r'Para:\s*(.+?)\s*\(', footer_text)
-                if name_match:
-                    sender_name = name_match.group(1).strip()
-                break
-
-        # If no phone from embed, try conversation_db: find active conversation in this channel
+        # If no phone found (likely a suggestion embed), search nearby messages
         if not phone:
+            log.info("No phone in referenced message, searching nearby messages...")
+            try:
+                # Search messages before the referenced message for the client embed
+                async for hist_msg in message.channel.history(limit=5, before=ref_msg):
+                    if hist_msg.embeds:
+                        phone, sender_name = self._extract_phone_from_embeds(hist_msg.embeds)
+                        if phone:
+                            log.info(f"Found phone {phone} in nearby message {hist_msg.id}")
+                            break
+            except Exception as e:
+                log.error(f"Error searching channel history: {e}")
+
+        # Fallback: lookup conversation_db by channel
+        if not phone:
+            log.info("No phone in nearby messages, trying conversation_db...")
             try:
                 import conversation_db
                 conv = await conversation_db.get_active_conversation_by_channel(message.channel.id)
                 if conv:
                     phone = conv["phone_number"]
                     sender_name = conv.get("sender_name", "")
+                    log.info(f"Found phone {phone} from conversation_db")
             except Exception as e:
                 log.error(f"Error recovering WA data from DB: {e}")
 
         if phone:
             wa_data = {"sender": phone, "sender_name": sender_name, "timestamp": datetime.now()}
-            # Cache it for future replies
             self._whatsapp_messages[message.reference.message_id] = wa_data
             return wa_data
 
         return None
+
+    @staticmethod
+    def _extract_phone_from_embeds(embeds: list) -> tuple[str | None, str]:
+        """Extract phone number and sender name from a list of embeds."""
+        import re
+        for embed in embeds:
+            title = embed.title or ""
+            footer_text = embed.footer.text if embed.footer else ""
+
+            # Client embed: "📱 WhatsApp — nombre (+598XXXXXXX)"
+            match = re.search(r'\+?(\d{10,15})', title)
+            if match:
+                phone = match.group(1)
+                name_match = re.search(r'—\s*(.+?)\s*\(', title)
+                sender_name = name_match.group(1).strip() if name_match else ""
+                return phone, sender_name
+
+            # Suggestion embed footer: "Para: +598XXXXXXX | ..." or "Para: nombre (+598XXXXXXX) | ..."
+            footer_match = re.search(r'Para:.*?(\d{10,15})', footer_text)
+            if footer_match:
+                phone = footer_match.group(1)
+                name_match = re.search(r'Para:\s*(.+?)\s*[\(|]', footer_text)
+                sender_name = name_match.group(1).strip() if name_match else ""
+                return phone, sender_name
+
+        return None, ""
 
     # ==================================================================
     # ENVIAR WHATSAPP VIA META CLOUD API
