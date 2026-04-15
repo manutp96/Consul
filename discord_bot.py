@@ -446,19 +446,36 @@ class ConsularBot(discord.Client):
             return
 
         # ============================================================
-        # WHATSAPP: reply a mensaje de cliente → enviar por WhatsApp o re-engage bot
+        # WHATSAPP: reply en canal de WhatsApp → enviar por WhatsApp o re-engage bot
         # ============================================================
-        if message.reference and message.reference.message_id:
+        is_wa_channel = message.channel.id in DISCORD_WA_CHANNELS
+        if message.reference and message.reference.message_id and is_wa_channel:
             ref_id = message.reference.message_id
-            if ref_id in self._whatsapp_messages:
-                wa_data = self._whatsapp_messages[ref_id]
+            wa_data = self._whatsapp_messages.get(ref_id)
 
-                # Check if employee is mentioning the bot (re-engagement)
-                if self.user.mentioned_in(message) and not message.mention_everyone:
-                    # Employee wants a new/different suggestion from the bot
-                    instruccion = message.content
-                    for mention in message.mentions:
-                        instruccion = instruccion.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
+            # If not in memory (bot restarted), try to recover from the referenced message
+            if not wa_data:
+                wa_data = await self._recover_wa_data(message)
+
+            if not wa_data:
+                await message.reply("No pude identificar el cliente. Responde directamente al mensaje verde del cliente.")
+                return
+
+            # Strip bot mentions from content (Discord adds them automatically on reply)
+            respuesta_texto = message.content
+                for mention in message.mentions:
+                    respuesta_texto = respuesta_texto.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
+                respuesta_texto = respuesta_texto.strip()
+
+                if not respuesta_texto:
+                    return
+
+                # Re-engagement: employee wants a new suggestion from the bot
+                # Must start with "!bot" or "!sugerencia" prefix
+                re_engage_prefixes = ("!bot ", "!sugerencia ", "!bot\n", "!sugerencia\n")
+                if respuesta_texto.lower().startswith(re_engage_prefixes):
+                    # Remove prefix to get the instruction
+                    instruccion = respuesta_texto.split(None, 1)[1] if ' ' in respuesta_texto or '\n' in respuesta_texto else ""
                     instruccion = instruccion.strip()
 
                     if instruccion:
@@ -479,7 +496,6 @@ class ConsularBot(discord.Client):
                                 if conv:
                                     await conversation_db.add_message(conv["id"], "bot", nueva_sugerencia)
 
-                                # Post new suggestion embed
                                 embed = discord.Embed(
                                     title="🤖 Nueva sugerencia del Bot",
                                     description=nueva_sugerencia[:1900],
@@ -492,37 +508,33 @@ class ConsularBot(discord.Client):
                             except Exception as e:
                                 log.error(f"Error en re-engagement del bot: {e}")
                                 await message.reply(f"Error generando nueva sugerencia: {e}")
+                    else:
+                        await message.reply("Usa: `!bot <instruccion>` para pedir una nueva sugerencia.")
                     return
 
-                # Employee is replying to client (no bot mention) → send via WhatsApp
-                respuesta_texto = message.content
-                for mention in message.mentions:
-                    respuesta_texto = respuesta_texto.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
-                respuesta_texto = respuesta_texto.strip()
+                # Default: send reply to client via WhatsApp
+                enviado = await self._enviar_whatsapp(wa_data["sender"], respuesta_texto)
+                if enviado:
+                    await message.add_reaction("\u2705")
+                    log.info(f"Respuesta enviada por WhatsApp a {wa_data['sender']}: {respuesta_texto[:50]}")
 
-                if respuesta_texto:
-                    enviado = await self._enviar_whatsapp(wa_data["sender"], respuesta_texto)
-                    if enviado:
-                        await message.add_reaction("\u2705")
-                        log.info(f"Respuesta enviada por WhatsApp a {wa_data['sender']}: {respuesta_texto[:50]}")
-
-                        # Guardar respuesta del empleado en conversation_db
-                        try:
-                            import conversation_db
-                            conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
-                            if conv:
-                                await conversation_db.add_message(conv["id"], "employee", respuesta_texto)
-                        except Exception as e:
-                            log.error(f"Error guardando respuesta en DB: {e}")
-                    else:
-                        await message.add_reaction("\u274c")
-                        await message.reply("Error enviando el mensaje por WhatsApp. Verificar configuracion.")
+                    try:
+                        import conversation_db
+                        conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
+                        if conv:
+                            await conversation_db.add_message(conv["id"], "employee", respuesta_texto)
+                    except Exception as e:
+                        log.error(f"Error guardando respuesta en DB: {e}")
+                else:
+                    await message.add_reaction("\u274c")
+                    await message.reply("Error enviando el mensaje por WhatsApp. Verificar configuracion.")
                 return
 
         # ============================================================
         # MENCION AL BOT (@bot mensaje en lenguaje natural)
+        # Skip WhatsApp channels — replies there are handled above
         # ============================================================
-        if self.user.mentioned_in(message) and not message.mention_everyone:
+        if self.user.mentioned_in(message) and not message.mention_everyone and not is_wa_channel:
             # Extraer texto sin la mencion
             texto = message.content
             for mention in message.mentions:
@@ -743,7 +755,7 @@ class ConsularBot(discord.Client):
                     description=sugerencia,
                     color=discord.Color.blue()
                 )
-                embed_sugerencia.set_footer(text="Responde al mensaje de arriba para enviar esta u otra respuesta al cliente")
+                embed_sugerencia.set_footer(text="Responde para enviar al cliente | !bot <instruccion> para nueva sugerencia")
 
                 sugerencia_msg = await channel.send(embed=embed_sugerencia)
 
@@ -758,6 +770,62 @@ class ConsularBot(discord.Client):
 
         except Exception as e:
             log.error(f"Error reenviando WhatsApp a Discord: {e}")
+
+    # ==================================================================
+    # RECUPERAR DATOS DE WHATSAPP DESDE MENSAJE REFERENCIADO
+    # ==================================================================
+
+    async def _recover_wa_data(self, message: discord.Message) -> dict | None:
+        """
+        Recover WhatsApp sender data from a referenced Discord message.
+        Searches the embed title for a phone number pattern, or looks up
+        the conversation DB by scanning recent embeds in the reply chain.
+        """
+        import re
+        try:
+            ref_msg = await message.channel.fetch_message(message.reference.message_id)
+        except Exception:
+            return None
+
+        # Check embeds in the referenced message for phone number
+        phone = None
+        sender_name = ""
+        for embed in ref_msg.embeds:
+            title = embed.title or ""
+            # Match patterns like "WhatsApp — nombre (+598XXXXXXX)" or "WhatsApp — +598XXXXXXX"
+            match = re.search(r'\+?(\d{10,15})', title)
+            if match:
+                phone = match.group(1)
+                # Extract name from title
+                name_match = re.search(r'—\s*(.+?)\s*\(', title)
+                if name_match:
+                    sender_name = name_match.group(1).strip()
+                break
+            # Also check footer for "Instruccion:" (suggestion embed) — walk up to parent
+            footer_text = embed.footer.text if embed.footer else ""
+            if "sugerencia" in title.lower() or "Instruccion:" in footer_text:
+                # This is a suggestion embed, not the client message.
+                # Try to find the client by looking at conversation_db for this channel
+                pass
+
+        # If no phone from embed, try conversation_db: find active conversation in this channel
+        if not phone:
+            try:
+                import conversation_db
+                conv = await conversation_db.get_active_conversation_by_channel(message.channel.id)
+                if conv:
+                    phone = conv["phone_number"]
+                    sender_name = conv.get("sender_name", "")
+            except Exception as e:
+                log.error(f"Error recovering WA data from DB: {e}")
+
+        if phone:
+            wa_data = {"sender": phone, "sender_name": sender_name, "timestamp": datetime.now()}
+            # Cache it for future replies
+            self._whatsapp_messages[message.reference.message_id] = wa_data
+            return wa_data
+
+        return None
 
     # ==================================================================
     # ENVIAR WHATSAPP VIA META CLOUD API

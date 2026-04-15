@@ -69,6 +69,20 @@ async def init_db(channel_ids: list[int]):
                 (ch_id,)
             )
 
+        # Sync channel_assignments counters with actual active conversations
+        # (fixes desyncs from crashes, restarts, or newly added channels)
+        for ch_id in _channel_ids:
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM conversations WHERE discord_channel_id = ? AND is_active = 1",
+                (ch_id,)
+            )
+            row = await cursor.fetchone()
+            actual_count = row[0] if row else 0
+            await db.execute(
+                "UPDATE channel_assignments SET active_conversations = ? WHERE channel_id = ?",
+                (actual_count, ch_id)
+            )
+
         await db.commit()
 
     log.info(f"DB initialized at {DB_PATH} with {len(_channel_ids)} channels")
@@ -130,12 +144,12 @@ async def get_or_create_conversation(phone_number: str, sender_name: str = "") -
 
 
 async def _get_least_loaded_channel(db) -> int:
-    """Get channel ID with fewest active conversations."""
+    """Get channel ID with fewest active conversations (random tiebreak for even distribution)."""
     if not _channel_ids:
         raise ValueError("No WhatsApp channels configured")
 
     cursor = await db.execute(
-        "SELECT channel_id, active_conversations FROM channel_assignments ORDER BY active_conversations ASC LIMIT 1"
+        "SELECT channel_id, active_conversations FROM channel_assignments ORDER BY active_conversations ASC, RANDOM() LIMIT 1"
     )
     row = await cursor.fetchone()
     if row:
@@ -181,6 +195,18 @@ async def get_conversation_by_phone(phone_number: str) -> dict | None:
         cursor = await db.execute(
             "SELECT * FROM conversations WHERE phone_number = ?",
             (phone_number,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_active_conversation_by_channel(discord_channel_id: int) -> dict | None:
+    """Get the most recently active conversation assigned to a Discord channel."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM conversations WHERE discord_channel_id = ? AND is_active = 1 ORDER BY last_message_at DESC LIMIT 1",
+            (discord_channel_id,)
         )
         row = await cursor.fetchone()
         return dict(row) if row else None
