@@ -455,11 +455,15 @@ class ConsularBot(discord.Client):
 
             # If not in memory (bot restarted), try to recover from the referenced message
             if not wa_data:
+                log.info(f"WA data not in memory for ref {ref_id}, recovering from message...")
                 wa_data = await self._recover_wa_data(message)
 
             if not wa_data:
+                log.warning(f"Could not recover WA data for ref {ref_id} in channel {message.channel.id}")
                 await message.reply("No pude identificar el cliente. Responde directamente al mensaje verde del cliente.")
                 return
+
+            log.info(f"WA reply: sending to {wa_data['sender']} from {message.author}")
 
             # Strip bot mentions from content (Discord adds them automatically on reply)
             respuesta_texto = message.content
@@ -501,7 +505,7 @@ class ConsularBot(discord.Client):
                                     description=nueva_sugerencia[:1900],
                                     color=discord.Color.blue()
                                 )
-                                embed.set_footer(text=f"Instruccion: {instruccion[:100]}")
+                                embed.set_footer(text=f"Para: +{wa_data['sender']} | Instruccion: {instruccion[:80]}")
                                 new_msg = await message.channel.send(embed=embed)
                                 self._whatsapp_messages[new_msg.id] = wa_data
 
@@ -755,7 +759,7 @@ class ConsularBot(discord.Client):
                     description=sugerencia,
                     color=discord.Color.blue()
                 )
-                embed_sugerencia.set_footer(text="Responde para enviar al cliente | !bot <instruccion> para nueva sugerencia")
+                embed_sugerencia.set_footer(text=f"Para: {nombre_display} | Responde para enviar | !bot <instruccion> para nueva sugerencia")
 
                 sugerencia_msg = await channel.send(embed=embed_sugerencia)
 
@@ -792,21 +796,27 @@ class ConsularBot(discord.Client):
         sender_name = ""
         for embed in ref_msg.embeds:
             title = embed.title or ""
-            # Match patterns like "WhatsApp — nombre (+598XXXXXXX)" or "WhatsApp — +598XXXXXXX"
+            footer_text = embed.footer.text if embed.footer else ""
+
+            # 1. Client embed: "WhatsApp — nombre (+598XXXXXXX)"
             match = re.search(r'\+?(\d{10,15})', title)
             if match:
                 phone = match.group(1)
-                # Extract name from title
                 name_match = re.search(r'—\s*(.+?)\s*\(', title)
                 if name_match:
                     sender_name = name_match.group(1).strip()
                 break
-            # Also check footer for "Instruccion:" (suggestion embed) — walk up to parent
-            footer_text = embed.footer.text if embed.footer else ""
-            if "sugerencia" in title.lower() or "Instruccion:" in footer_text:
-                # This is a suggestion embed, not the client message.
-                # Try to find the client by looking at conversation_db for this channel
-                pass
+
+            # 2. Suggestion embed: footer has "Para: +598XXXXXXX" or "Para: nombre (+598XXXXXXX)"
+            footer_phone = re.search(r'Para:\s*\+?(\d{10,15})', footer_text)
+            if not footer_phone:
+                footer_phone = re.search(r'Para:.*\+?(\d{10,15})', footer_text)
+            if footer_phone:
+                phone = footer_phone.group(1)
+                name_match = re.search(r'Para:\s*(.+?)\s*\(', footer_text)
+                if name_match:
+                    sender_name = name_match.group(1).strip()
+                break
 
         # If no phone from embed, try conversation_db: find active conversation in this channel
         if not phone:
