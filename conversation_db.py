@@ -200,6 +200,18 @@ async def get_conversation_by_phone(phone_number: str) -> dict | None:
         return dict(row) if row else None
 
 
+async def get_active_conversation_by_channel(discord_channel_id: int) -> dict | None:
+    """Get the most recently active conversation assigned to a Discord channel."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM conversations WHERE discord_channel_id = ? AND is_active = 1 ORDER BY last_message_at DESC LIMIT 1",
+            (discord_channel_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
 async def mark_stale_conversations_inactive():
     """Mark conversations with no messages in 24h as inactive, decrement channel counts."""
     cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
