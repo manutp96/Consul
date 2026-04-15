@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+conversations.db
+google_credentials.json
+feedback.json
+cambios_log.json
+.claude/

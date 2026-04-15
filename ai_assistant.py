@@ -14,7 +14,7 @@ import re
 import time
 from collections import deque
 
-from kb_manager import get_system_prompt, get_tramites_data
+from kb_manager import get_system_prompt, get_system_prompt_base, get_category_names, get_tramites_data
 
 log = logging.getLogger("AI")
 
@@ -206,6 +206,189 @@ def formatear_respuesta_whatsapp(respuesta: str) -> str:
         resultado = resultado[:3950] + "\n\n... (mensaje truncado, consulta mas detalles)"
 
     return resultado
+
+
+# ============================================================================
+# INYECCION INTELIGENTE DE CONTEXTO
+# ============================================================================
+
+def _serializar_tramite(tramite: dict) -> str:
+    """Serializa un tramite completo a texto para inyectar en el prompt."""
+    lineas = []
+    lineas.append(f"[{tramite.get('id', '')}] {tramite.get('nombre', '')}")
+    if tramite.get("descripcion"):
+        lineas.append(f"Descripcion: {tramite['descripcion']}")
+    if tramite.get("quien_puede_solicitarlo"):
+        lineas.append(f"Quien puede solicitarlo: {tramite['quien_puede_solicitarlo']}")
+    if tramite.get("documentos"):
+        lineas.append("Documentos necesarios:")
+        for doc in tramite["documentos"]:
+            lineas.append(f"  - {doc}")
+    if tramite.get("procedimiento"):
+        lineas.append(f"Procedimiento: {tramite['procedimiento']}")
+    if tramite.get("notas"):
+        for nota in tramite["notas"]:
+            lineas.append(f"Nota: {nota}")
+    return "\n".join(lineas)
+
+
+def build_context_for_query(query: str) -> str:
+    """
+    Construye contexto de tramites relevantes para inyectar en el prompt.
+    Usa busqueda local por keywords en vez del README completo.
+    Reduccion de ~233KB a ~5KB por llamada.
+    """
+    resultados = buscar_tramite_local(query)
+
+    if not resultados or resultados[0]["score"] == 0:
+        # Fallback: listar categorias disponibles
+        categorias = get_category_names()
+        return (
+            "No se encontraron tramites especificos para esta consulta.\n"
+            "Categorias disponibles: " + ", ".join(categorias) + ".\n"
+            "Pregunta al cliente sobre que tema especifico necesita informacion."
+        )
+
+    bloques = []
+    for r in resultados[:5]:
+        bloques.append(_serializar_tramite(r["tramite"]))
+
+    return "\n\n---\n\n".join(bloques)
+
+
+def format_conversation_history(messages: list[dict]) -> str:
+    """Formatea historial de conversacion para inyectar en el prompt."""
+    if not messages:
+        return "(Sin historial previo - primera interaccion)"
+
+    lineas = []
+    for msg in messages:
+        role_label = {
+            "client": "CLIENTE",
+            "bot": "SUGERENCIA BOT",
+            "employee": "EMPLEADO"
+        }.get(msg["role"], msg["role"].upper())
+
+        ts = msg.get("timestamp", "")
+        if ts:
+            try:
+                dt = ts.split("T")[-1] if "T" in ts else ts.split(" ")[-1]
+                hora = dt[:5]
+            except (IndexError, ValueError):
+                hora = ""
+        else:
+            hora = ""
+
+        lineas.append(f"[{role_label} {hora}] {msg['content']}")
+
+    return "\n".join(lineas)
+
+
+# ============================================================================
+# CONSULTA CONVERSACIONAL (WhatsApp)
+# ============================================================================
+
+CONVERSATIONAL_PROMPT = """Eres el asistente de ventas de RH Tramites Consulares. Tu trabajo es ayudar al
+EMPLEADO a responder mensajes de clientes de WhatsApp.
+
+CONTEXTO: El empleado ve tu sugerencia y decide si copiarla, modificarla, o pedirte
+otra version. Tu NO hablas directamente con el cliente. Generas SUGERENCIAS de
+respuesta para que el empleado envie.
+
+ESTRATEGIA CONVERSACIONAL:
+1. NUNCA des toda la informacion de golpe
+2. Haz UNA pregunta de seguimiento para entender mejor la situacion del cliente
+3. Adapta la longitud de la respuesta a la complejidad de la pregunta:
+   - Preguntas simples o iniciales: respuestas cortas (2-4 lineas)
+   - Preguntas sobre documentacion o requisitos especificos: incluye toda la info clave necesaria, aunque sea mas largo
+   - Listas de documentos: incluye la lista completa, no recortes info importante
+4. Guia la conversacion hacia contratar los servicios de RH Tramites
+
+SERVICIOS QUE OFRECES:
+- Asesoria sobre tramites consulares
+- Gestion completa de documentacion
+- Agendar y gestionar citas en el consulado
+- Contacto: WhatsApp +598 91 090 980
+
+TACTICAS DE VENTA:
+- Si el cliente pregunta requisitos: da info parcial + "hay mas detalles segun tu
+  caso particular, te puedo ayudar con la gestion completa"
+- Si pregunta por citas: "nosotros agendamos la cita por vos, nos encargamos de todo"
+- Si parece complicado: "estos tramites tienen muchos detalles, con nuestra asesoria
+  te aseguras de no perder tiempo ni viajes al consulado"
+- Si el cliente ya mostro interes: ofrece agendar una consulta
+
+FORMATO DE TU RESPUESTA:
+Genera SOLO el texto que el empleado enviaria al cliente. No incluyas explicaciones,
+notas internas, ni etiquetas como "SUGERENCIA:". Escribe como si fueras el empleado
+hablando por WhatsApp de manera informal pero profesional.
+
+HISTORIAL DE CONVERSACION:
+{history}
+
+INFORMACION RELEVANTE SOBRE TRAMITES:
+{context}"""
+
+
+async def consultar_conversacional(
+    client_message: str,
+    conversation_history: list[dict],
+    employee_context: str = ""
+) -> str:
+    """
+    Genera sugerencia conversacional para el empleado.
+    Usa inyeccion inteligente de contexto (solo tramites relevantes).
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        log.error("ANTHROPIC_API_KEY no configurada")
+        return "Error: La API de IA no esta configurada."
+
+    if not _check_rate_limit():
+        return "Limite de consultas alcanzado. Intenta en unos segundos."
+
+    try:
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+
+        # Build smart context
+        tramites_context = build_context_for_query(client_message)
+        history_text = format_conversation_history(conversation_history)
+
+        system = CONVERSATIONAL_PROMPT.format(
+            history=history_text,
+            context=tramites_context
+        )
+
+        # If employee gave specific instructions, add them
+        user_message = client_message
+        if employee_context:
+            user_message = (
+                f"[INSTRUCCION DEL EMPLEADO: {employee_context}]\n\n"
+                f"Ultimo mensaje del cliente: {client_message}"
+            )
+
+        log.info(f"Consulta conversacional: {client_message[:80]}... (contexto: {len(tramites_context)} chars)")
+
+        response = await client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=1500,
+            system=system,
+            messages=[
+                {"role": "user", "content": user_message}
+            ]
+        )
+
+        respuesta = response.content[0].text.strip()
+        log.info(f"Sugerencia generada ({len(respuesta)} chars)")
+        return respuesta
+
+    except ImportError:
+        log.error("El paquete 'anthropic' no esta instalado")
+        return "Error: El modulo de IA no esta instalado correctamente."
+    except Exception as e:
+        log.error(f"Error en consulta conversacional: {e}")
+        return "No pude generar una sugerencia. Intenta de nuevo."
 
 
 # ============================================================================
