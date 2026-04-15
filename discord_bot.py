@@ -467,72 +467,72 @@ class ConsularBot(discord.Client):
 
             # Strip bot mentions from content (Discord adds them automatically on reply)
             respuesta_texto = message.content
-                for mention in message.mentions:
-                    respuesta_texto = respuesta_texto.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
-                respuesta_texto = respuesta_texto.strip()
+            for mention in message.mentions:
+                respuesta_texto = respuesta_texto.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
+            respuesta_texto = respuesta_texto.strip()
 
-                if not respuesta_texto:
-                    return
-
-                # Re-engagement: employee wants a new suggestion from the bot
-                # Must start with "!bot" or "!sugerencia" prefix
-                re_engage_prefixes = ("!bot ", "!sugerencia ", "!bot\n", "!sugerencia\n")
-                if respuesta_texto.lower().startswith(re_engage_prefixes):
-                    # Remove prefix to get the instruction
-                    instruccion = respuesta_texto.split(None, 1)[1] if ' ' in respuesta_texto or '\n' in respuesta_texto else ""
-                    instruccion = instruccion.strip()
-
-                    if instruccion:
-                        async with message.channel.typing():
-                            try:
-                                import conversation_db
-                                conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
-                                history = []
-                                if conv:
-                                    history = await conversation_db.get_recent_messages(conv["id"], limit=20)
-
-                                nueva_sugerencia = await consultar_conversacional(
-                                    client_message=history[-1]["content"] if history else "",
-                                    conversation_history=history,
-                                    employee_context=instruccion,
-                                )
-
-                                if conv:
-                                    await conversation_db.add_message(conv["id"], "bot", nueva_sugerencia)
-
-                                embed = discord.Embed(
-                                    title="🤖 Nueva sugerencia del Bot",
-                                    description=nueva_sugerencia[:1900],
-                                    color=discord.Color.blue()
-                                )
-                                embed.set_footer(text=f"Para: +{wa_data['sender']} | Instruccion: {instruccion[:80]}")
-                                new_msg = await message.channel.send(embed=embed)
-                                self._whatsapp_messages[new_msg.id] = wa_data
-
-                            except Exception as e:
-                                log.error(f"Error en re-engagement del bot: {e}")
-                                await message.reply(f"Error generando nueva sugerencia: {e}")
-                    else:
-                        await message.reply("Usa: `!bot <instruccion>` para pedir una nueva sugerencia.")
-                    return
-
-                # Default: send reply to client via WhatsApp
-                enviado = await self._enviar_whatsapp(wa_data["sender"], respuesta_texto)
-                if enviado:
-                    await message.add_reaction("\u2705")
-                    log.info(f"Respuesta enviada por WhatsApp a {wa_data['sender']}: {respuesta_texto[:50]}")
-
-                    try:
-                        import conversation_db
-                        conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
-                        if conv:
-                            await conversation_db.add_message(conv["id"], "employee", respuesta_texto)
-                    except Exception as e:
-                        log.error(f"Error guardando respuesta en DB: {e}")
-                else:
-                    await message.add_reaction("\u274c")
-                    await message.reply("Error enviando el mensaje por WhatsApp. Verificar configuracion.")
+            if not respuesta_texto:
                 return
+
+            # Re-engagement: employee wants a new suggestion from the bot
+            # Must start with "!bot" or "!sugerencia" prefix
+            re_engage_prefixes = ("!bot ", "!sugerencia ", "!bot\n", "!sugerencia\n")
+            if respuesta_texto.lower().startswith(re_engage_prefixes):
+                # Remove prefix to get the instruction
+                instruccion = respuesta_texto.split(None, 1)[1] if ' ' in respuesta_texto or '\n' in respuesta_texto else ""
+                instruccion = instruccion.strip()
+
+                if instruccion:
+                    async with message.channel.typing():
+                        try:
+                            import conversation_db
+                            conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
+                            history = []
+                            if conv:
+                                history = await conversation_db.get_recent_messages(conv["id"], limit=20)
+
+                            nueva_sugerencia = await consultar_conversacional(
+                                client_message=history[-1]["content"] if history else "",
+                                conversation_history=history,
+                                employee_context=instruccion,
+                            )
+
+                            if conv:
+                                await conversation_db.add_message(conv["id"], "bot", nueva_sugerencia)
+
+                            embed = discord.Embed(
+                                title="🤖 Nueva sugerencia del Bot",
+                                description=nueva_sugerencia[:1900],
+                                color=discord.Color.blue()
+                            )
+                            embed.set_footer(text=f"Para: +{wa_data['sender']} | Instruccion: {instruccion[:80]}")
+                            new_msg = await message.channel.send(embed=embed)
+                            self._whatsapp_messages[new_msg.id] = wa_data
+
+                        except Exception as e:
+                            log.error(f"Error en re-engagement del bot: {e}")
+                            await message.reply(f"Error generando nueva sugerencia: {e}")
+                else:
+                    await message.reply("Usa: `!bot <instruccion>` para pedir una nueva sugerencia.")
+                return
+
+            # Default: send reply to client via WhatsApp
+            enviado = await self._enviar_whatsapp(wa_data["sender"], respuesta_texto)
+            if enviado:
+                await message.add_reaction("\u2705")
+                log.info(f"Respuesta enviada por WhatsApp a {wa_data['sender']}: {respuesta_texto[:50]}")
+
+                try:
+                    import conversation_db
+                    conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
+                    if conv:
+                        await conversation_db.add_message(conv["id"], "employee", respuesta_texto)
+                except Exception as e:
+                    log.error(f"Error guardando respuesta en DB: {e}")
+            else:
+                await message.add_reaction("\u274c")
+                await message.reply("Error enviando el mensaje por WhatsApp. Verificar configuracion.")
+            return
 
         # ============================================================
         # MENCION AL BOT (@bot mensaje en lenguaje natural)
