@@ -522,6 +522,24 @@ class ConsularBot(discord.Client):
                 await message.add_reaction("\u2705")
                 log.info(f"Respuesta enviada por WhatsApp a {wa_data['sender']}: {respuesta_texto[:50]}")
 
+                # Remove ⏳ from the client message (and referenced message if different)
+                try:
+                    ref_msg = await message.channel.fetch_message(ref_id)
+                    await ref_msg.remove_reaction("\u23f3", self.user)
+                except Exception:
+                    pass
+                # Also search nearby messages for other ⏳ from this client
+                try:
+                    async for hist_msg in message.channel.history(limit=5, around=ref_msg if 'ref_msg' in dir() else None):
+                        if hist_msg.embeds and hist_msg.author == self.user:
+                            for embed in hist_msg.embeds:
+                                title = embed.title or ""
+                                if wa_data["sender"] in title and "WhatsApp" in title:
+                                    await hist_msg.remove_reaction("\u23f3", self.user)
+                                    break
+                except Exception:
+                    pass
+
                 try:
                     import conversation_db
                     conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
@@ -741,6 +759,9 @@ class ConsularBot(discord.Client):
             embed.set_footer(text=f"Responde a este mensaje para contestarle al cliente por WhatsApp")
 
             msg = await channel.send(embed=embed)
+
+            # Marcar como pendiente de respuesta
+            await msg.add_reaction("\u23f3")  # ⏳
 
             # Guardar mapeo para que cuando el empleado responda, se envíe por WhatsApp
             self._whatsapp_messages[msg.id] = {
