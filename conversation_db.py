@@ -139,7 +139,7 @@ async def get_or_create_conversation(phone_number: str, sender_name: str = "") -
 
         # Create new — channel_id=0 means "needs a Discord channel"
         await db.execute(
-            "INSERT INTO conversations (phone_number, sender_name, discord_channel_id) VALUES (?, ?, 0)",
+            "INSERT INTO conversations (phone_number, sender_name, discord_channel_id, last_client_message_at) VALUES (?, ?, 0, datetime('now'))",
             (phone_number, sender_name)
         )
         await db.commit()
