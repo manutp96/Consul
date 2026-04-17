@@ -591,9 +591,12 @@ class ConsularBot(discord.Client):
 
         # ============================================================
         # MENCION AL BOT (@bot mensaje en lenguaje natural)
-        # Skip WhatsApp channels — replies there are handled above
+        # Skip WhatsApp channels entirely — all WA interaction is handled above
         # ============================================================
-        if self.user.mentioned_in(message) and not message.mention_everyone and not is_wa_channel:
+        if is_wa_channel:
+            return  # Nothing more to do in WA channels
+
+        if self.user.mentioned_in(message) and not message.mention_everyone:
             # Extraer texto sin la mencion
             texto = message.content
             for mention in message.mentions:
