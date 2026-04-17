@@ -293,15 +293,20 @@ async def is_within_24h_window(phone_number: str) -> bool:
     """Check if the customer's last inbound message is within the 24h window."""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
-            "SELECT last_client_message_at FROM conversations WHERE phone_number = ?",
+            "SELECT last_client_message_at, last_message_at FROM conversations WHERE phone_number = ?",
             (phone_number,),
         )
         row = await cursor.fetchone()
-        if not row or not row[0]:
+        if not row:
+            return False
+
+        # Use last_client_message_at, fall back to last_message_at for older conversations
+        timestamp = row[0] or row[1]
+        if not timestamp:
             return False
 
         try:
-            last_ts = datetime.fromisoformat(row[0])
+            last_ts = datetime.fromisoformat(timestamp)
             return (datetime.utcnow() - last_ts) < timedelta(hours=24)
         except (ValueError, TypeError):
             return False
