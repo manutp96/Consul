@@ -739,16 +739,37 @@ class ConsularBot(discord.Client):
     # ==================================================================
 
     async def enviar_mensaje_whatsapp(self, datos: dict, channel_id: int = 0):
-        """Reenvía un mensaje de WhatsApp a Discord con sugerencia de IA."""
+        """Reenvía un mensaje de WhatsApp a Discord con sugerencia de IA.
+        If the assigned channel was deleted, creates a new one automatically."""
+        sender = datos.get("sender", "Desconocido")
+        sender_name = datos.get("sender_name", "")
         target_channel_id = channel_id or DISCORD_WHATSAPP_CHANNEL_ID
-        if not target_channel_id:
-            log.warning("Ningun canal de WhatsApp configurado")
-            return
 
         try:
-            channel = self.get_channel(target_channel_id)
+            # Try to get the assigned channel
+            channel = None
+            if target_channel_id:
+                channel = self.get_channel(target_channel_id)
+                if not channel:
+                    try:
+                        channel = await self.fetch_channel(target_channel_id)
+                    except discord.NotFound:
+                        log.warning(f"Channel {target_channel_id} was deleted, creating new one for {sender}")
+                        channel = None
+                    except Exception:
+                        channel = None
+
+            # If channel doesn't exist (deleted or never created), create a new one
             if not channel:
-                channel = await self.fetch_channel(target_channel_id)
+                new_channel_id = await self.get_or_create_client_channel(sender, sender_name)
+                if new_channel_id:
+                    channel = self.get_channel(new_channel_id)
+                    if not channel:
+                        channel = await self.fetch_channel(new_channel_id)
+                    target_channel_id = new_channel_id
+                else:
+                    log.error(f"Could not create channel for {sender}")
+                    return
 
             sender = datos.get("sender", "Desconocido")
             sender_name = datos.get("sender_name", "")
@@ -902,10 +923,20 @@ class ConsularBot(discord.Client):
         import re
         import conversation_db
 
-        # Check if conversation already has a channel
+        # Check if conversation already has a channel that still exists
         conv = await conversation_db.get_conversation_by_phone(phone_number)
         if conv and conv["discord_channel_id"] != 0:
-            return conv["discord_channel_id"]
+            # Verify the channel still exists in Discord
+            try:
+                existing = self.get_channel(conv["discord_channel_id"])
+                if not existing:
+                    existing = await self.fetch_channel(conv["discord_channel_id"])
+                return conv["discord_channel_id"]
+            except discord.NotFound:
+                log.warning(f"Channel {conv['discord_channel_id']} was deleted for {phone_number}, creating new one")
+                # Fall through to create a new channel
+            except Exception:
+                pass  # Fall through to create
 
         # Create new channel
         guild = self.guilds[0] if self.guilds else None
@@ -930,12 +961,15 @@ class ConsularBot(discord.Client):
             )
             log.info(f"Created Discord channel #{channel.name} (ID: {channel.id}) for {phone_number}")
 
-            # Update DB with channel ID
+            # Update DB with channel ID (works for both new and reassigned conversations)
             if conv:
                 await conversation_db.assign_channel(conv["id"], channel.id)
 
             # Track channel ID in memory
             self._wa_channel_ids.add(channel.id)
+            # Remove old deleted channel ID if present
+            if conv and conv["discord_channel_id"] != 0:
+                self._wa_channel_ids.discard(conv["discord_channel_id"])
 
             return channel.id
 
