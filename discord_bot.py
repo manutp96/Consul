@@ -37,6 +37,10 @@ if not DISCORD_WA_CHANNELS:
         DISCORD_WA_CHANNELS.append(_old)
 DISCORD_WHATSAPP_CHANNEL_ID = DISCORD_WA_CHANNELS[0] if DISCORD_WA_CHANNELS else 0
 
+# WhatsApp template config (for 24h window fallback)
+WHATSAPP_TEMPLATE_NAME = os.environ.get("WHATSAPP_TEMPLATE_NAME", "")
+WHATSAPP_TEMPLATE_LANG = os.environ.get("WHATSAPP_TEMPLATE_LANG", "es")
+
 
 # ============================================================================
 # BOT DE DISCORD
@@ -529,18 +533,18 @@ class ConsularBot(discord.Client):
                 return
 
             # Default: send reply to client via WhatsApp
-            enviado = await self._enviar_whatsapp(wa_data["sender"], respuesta_texto)
-            if enviado:
-                await message.add_reaction("\u2705")
+            exito, metodo = await self._enviar_whatsapp(wa_data["sender"], respuesta_texto, str(message.author))
+
+            if exito and metodo == "text":
+                await message.add_reaction("✅")
                 log.info(f"Respuesta enviada por WhatsApp a {wa_data['sender']}: {respuesta_texto[:50]}")
 
-                # Remove ⏳ from the client message (and referenced message if different)
+                # Remove ⏳ from the client message
                 try:
                     ref_msg = await message.channel.fetch_message(ref_id)
                     await ref_msg.remove_reaction("\u23f3", self.user)
                 except Exception:
                     pass
-                # Also search nearby messages for other ⏳ from this client
                 try:
                     async for hist_msg in message.channel.history(limit=5, around=ref_msg if 'ref_msg' in dir() else None):
                         if hist_msg.embeds and hist_msg.author == self.user:
@@ -552,16 +556,33 @@ class ConsularBot(discord.Client):
                 except Exception:
                     pass
 
-                try:
-                    import conversation_db
-                    conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
-                    if conv:
-                        await conversation_db.add_message(conv["id"], "employee", respuesta_texto)
-                except Exception as e:
-                    log.error(f"Error guardando respuesta en DB: {e}")
+            elif exito and metodo == "template":
+                await message.add_reaction("📩")
+                await message.reply(
+                    "⏰ La ventana de 24h de WhatsApp cerró. Se envió un template al cliente "
+                    "notificándole que tiene una respuesta pendiente. "
+                    "Tu mensaje se enviará automáticamente cuando el cliente responda."
+                )
+                log.info(f"Template enviado a {wa_data['sender']}, reply pendiente guardado")
+
+            elif not exito and metodo == "no_template":
+                await message.add_reaction("❌")
+                await message.reply(
+                    "⚠️ La ventana de 24h de WhatsApp cerró y no hay template configurado. "
+                    "Configurar `WHATSAPP_TEMPLATE_NAME` en las variables de entorno."
+                )
             else:
-                await message.add_reaction("\u274c")
-                await message.reply("Error enviando el mensaje por WhatsApp. Verificar configuracion.")
+                await message.add_reaction("❌")
+                await message.reply("Error enviando el mensaje por WhatsApp. Verificar configuración.")
+
+            # Save employee reply to DB regardless of send method
+            try:
+                import conversation_db
+                conv = await conversation_db.get_conversation_by_phone(wa_data["sender"])
+                if conv:
+                    await conversation_db.add_message(conv["id"], "employee", respuesta_texto)
+            except Exception as e:
+                log.error(f"Error guardando respuesta en DB: {e}")
             return
 
         # ============================================================
@@ -981,15 +1002,46 @@ class ConsularBot(discord.Client):
     # ENVIAR WHATSAPP VIA META CLOUD API
     # ==================================================================
 
-    async def _enviar_whatsapp(self, to: str, texto: str) -> bool:
-        """Envía un mensaje de WhatsApp al cliente via Meta Cloud API."""
-        import os
+    async def _enviar_whatsapp(self, to: str, texto: str, discord_user: str = "") -> tuple[bool, str]:
+        """
+        Orchestrator: tries free-form text, falls back to template if 24h window closed.
+        Returns: (success, method) where method is "text", "template", "no_template", or "failed".
+        Backward compat: callers that only check bool(result) still work since tuple is truthy.
+        """
+        import conversation_db
+
+        # Check 24h window
+        dentro_ventana = await conversation_db.is_within_24h_window(to)
+
+        if dentro_ventana:
+            exito, error_code = await self._enviar_whatsapp_text(to, texto)
+            if exito:
+                return (True, "text")
+            if error_code == 131047:
+                log.warning(f"Window check said OK but Meta returned 131047 for {to}, falling back to template")
+            else:
+                return (False, "failed")
+
+        # Outside window or 131047 fallback → try template
+        if not WHATSAPP_TEMPLATE_NAME:
+            log.warning(f"24h window closed for {to} and no WHATSAPP_TEMPLATE_NAME configured")
+            return (False, "no_template")
+
+        template_ok = await self._enviar_whatsapp_template(to)
+        if template_ok:
+            await conversation_db.save_pending_reply(to, texto, discord_user)
+            return (True, "template")
+        else:
+            return (False, "failed")
+
+    async def _enviar_whatsapp_text(self, to: str, texto: str) -> tuple[bool, int | None]:
+        """Send free-form text via Meta Cloud API. Returns (success, error_code_or_none)."""
         whatsapp_token = os.environ.get("WHATSAPP_TOKEN", "")
         whatsapp_phone_id = os.environ.get("WHATSAPP_PHONE_ID", "")
 
         if not whatsapp_token or not whatsapp_phone_id:
             log.error("WHATSAPP_TOKEN o WHATSAPP_PHONE_ID no configurados")
-            return False
+            return (False, None)
 
         try:
             import httpx
@@ -1008,14 +1060,67 @@ class ConsularBot(discord.Client):
                     },
                     timeout=15.0
                 )
-                if response.status_code == 200:
-                    log.info(f"WhatsApp enviado a {to}")
+                resp_json = response.json()
+
+                if "error" in resp_json:
+                    error_code = resp_json["error"].get("code", 0)
+                    error_msg = resp_json["error"].get("message", "Unknown")
+                    log.error(f"Meta API error {error_code} for {to}: {error_msg}")
+                    return (False, error_code)
+
+                if response.status_code == 200 and "messages" in resp_json:
+                    log.info(f"WhatsApp texto enviado a {to}")
+                    return (True, None)
+                else:
+                    log.error(f"WhatsApp send unexpected: {response.status_code} {response.text[:200]}")
+                    return (False, None)
+        except Exception as e:
+            log.error(f"Error enviando WhatsApp texto: {e}")
+            return (False, None)
+
+    async def _enviar_whatsapp_template(self, to: str) -> bool:
+        """Send a pre-approved template to re-engage the customer after 24h window."""
+        whatsapp_token = os.environ.get("WHATSAPP_TOKEN", "")
+        whatsapp_phone_id = os.environ.get("WHATSAPP_PHONE_ID", "")
+
+        if not whatsapp_token or not whatsapp_phone_id or not WHATSAPP_TEMPLATE_NAME:
+            log.warning("WhatsApp template config missing")
+            return False
+
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://graph.facebook.com/v25.0/{whatsapp_phone_id}/messages",
+                    headers={
+                        "Authorization": f"Bearer {whatsapp_token}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "messaging_product": "whatsapp",
+                        "to": to,
+                        "type": "template",
+                        "template": {
+                            "name": WHATSAPP_TEMPLATE_NAME,
+                            "language": {"code": WHATSAPP_TEMPLATE_LANG},
+                        }
+                    },
+                    timeout=15.0
+                )
+                resp_json = response.json()
+
+                if "error" in resp_json:
+                    log.error(f"Template error for {to}: {resp_json['error']}")
+                    return False
+
+                if response.status_code == 200 and "messages" in resp_json:
+                    log.info(f"WhatsApp template '{WHATSAPP_TEMPLATE_NAME}' enviado a {to}")
                     return True
                 else:
-                    log.error(f"Error enviando WhatsApp: {response.status_code} {response.text}")
+                    log.error(f"Template unexpected: {response.status_code} {response.text[:200]}")
                     return False
         except Exception as e:
-            log.error(f"Error enviando WhatsApp: {e}")
+            log.error(f"Error enviando template WhatsApp: {e}")
             return False
 
     # ==================================================================

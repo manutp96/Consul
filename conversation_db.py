@@ -60,7 +60,28 @@ async def init_db(channel_ids: list[int]):
                 channel_id INTEGER PRIMARY KEY,
                 active_conversations INTEGER DEFAULT 0
             );
+
+            CREATE TABLE IF NOT EXISTS pending_replies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone_number TEXT NOT NULL,
+                reply_text TEXT NOT NULL,
+                discord_user TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now')),
+                sent INTEGER DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_pr_phone ON pending_replies(phone_number);
         """)
+
+        # Migration: add last_client_message_at column
+        try:
+            await db.execute(
+                "ALTER TABLE conversations ADD COLUMN last_client_message_at TEXT DEFAULT NULL"
+            )
+            await db.commit()
+            log.info("Migration: added last_client_message_at column")
+        except Exception:
+            pass  # Column already exists
 
         # Seed channel assignments
         for ch_id in _channel_ids:
@@ -108,7 +129,7 @@ async def get_or_create_conversation(phone_number: str, sender_name: str = "") -
             conv = dict(row)
             # Update last_message_at and reactivate if needed
             await db.execute(
-                "UPDATE conversations SET last_message_at = datetime('now'), is_active = 1, sender_name = CASE WHEN sender_name = '' THEN ? ELSE sender_name END WHERE id = ?",
+                "UPDATE conversations SET last_message_at = datetime('now'), last_client_message_at = datetime('now'), is_active = 1, sender_name = CASE WHEN sender_name = '' THEN ? ELSE sender_name END WHERE id = ?",
                 (sender_name, conv["id"])
             )
             if not conv["is_active"]:
@@ -262,3 +283,63 @@ async def get_channel_load() -> dict[int, int]:
         )
         rows = await cursor.fetchall()
         return {row[0]: row[1] for row in rows}
+
+
+# ============================================================================
+# 24-HOUR MESSAGING WINDOW
+# ============================================================================
+
+async def is_within_24h_window(phone_number: str) -> bool:
+    """Check if the customer's last inbound message is within the 24h window."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "SELECT last_client_message_at FROM conversations WHERE phone_number = ?",
+            (phone_number,),
+        )
+        row = await cursor.fetchone()
+        if not row or not row[0]:
+            return False
+
+        try:
+            last_ts = datetime.fromisoformat(row[0])
+            return (datetime.utcnow() - last_ts) < timedelta(hours=24)
+        except (ValueError, TypeError):
+            return False
+
+
+# ============================================================================
+# PENDING REPLIES (for 24h window template fallback)
+# ============================================================================
+
+async def save_pending_reply(phone_number: str, reply_text: str, discord_user: str = ""):
+    """Save a reply that couldn't be sent because the 24h window was closed."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO pending_replies (phone_number, reply_text, discord_user) VALUES (?, ?, ?)",
+            (phone_number, reply_text, discord_user),
+        )
+        await db.commit()
+    log.info(f"Pending reply saved for {phone_number}")
+
+
+async def get_pending_replies(phone_number: str) -> list[dict]:
+    """Get unsent pending replies for a phone number."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT id, reply_text, discord_user, created_at FROM pending_replies "
+            "WHERE phone_number = ? AND sent = 0 ORDER BY created_at ASC",
+            (phone_number,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def mark_pending_reply_sent(reply_id: int):
+    """Mark a pending reply as sent."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE pending_replies SET sent = 1 WHERE id = ?",
+            (reply_id,),
+        )
+        await db.commit()

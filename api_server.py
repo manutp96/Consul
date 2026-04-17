@@ -189,6 +189,22 @@ async def meta_webhook_receive(request: Request):
         # 2. Guardar mensaje del cliente
         await conversation_db.add_message(conv_id, "client", texto)
 
+        # 2b. Auto-send pending replies (24h window just opened)
+        try:
+            pending = await conversation_db.get_pending_replies(sender)
+            if pending and _discord_bot:
+                for pr in pending:
+                    ok, _ = await _discord_bot._enviar_whatsapp_text(sender, pr["reply_text"])
+                    if ok:
+                        await conversation_db.mark_pending_reply_sent(pr["id"])
+                        await conversation_db.add_message(conv_id, "employee", pr["reply_text"])
+                        log.info(f"Pending reply auto-sent to {sender}: {pr['reply_text'][:50]}")
+                    else:
+                        log.error(f"Failed to auto-send pending reply {pr['id']} to {sender}")
+                        break
+        except Exception as e:
+            log.error(f"Error auto-sending pending replies: {e}")
+
         # 3. Obtener historial reciente
         history = await conversation_db.get_recent_messages(conv_id, limit=20)
 
