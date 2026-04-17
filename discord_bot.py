@@ -464,7 +464,11 @@ class ConsularBot(discord.Client):
         # ============================================================
         # WHATSAPP: reply en canal de WhatsApp → enviar por WhatsApp o re-engage bot
         # ============================================================
-        is_wa_channel = message.channel.id in self._wa_channel_ids
+        # Detect WA channel by set membership OR by channel name prefix "wa-"
+        is_wa_channel = (
+            message.channel.id in self._wa_channel_ids
+            or (hasattr(message.channel, 'name') and message.channel.name.startswith("wa-"))
+        )
         if message.reference and message.reference.message_id and is_wa_channel:
             ref_id = message.reference.message_id
             wa_data = self._whatsapp_messages.get(ref_id)
@@ -813,6 +817,9 @@ class ConsularBot(discord.Client):
             embed.set_footer(text=f"Responde a este mensaje para contestarle al cliente por WhatsApp")
 
             msg = await channel.send(embed=embed)
+
+            # Track this channel as a WA channel
+            self._wa_channel_ids.add(channel.id)
 
             # Marcar como pendiente de respuesta
             await msg.add_reaction("\u23f3")  # ⏳
