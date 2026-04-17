@@ -290,7 +290,8 @@ async def get_channel_load() -> dict[int, int]:
 # ============================================================================
 
 async def is_within_24h_window(phone_number: str) -> bool:
-    """Check if the customer's last inbound message is within the 24h window."""
+    """Check if the customer's last inbound message is within the 24h window.
+    Returns True (optimistic) if no record exists — let Meta's 131047 error be the safety net."""
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
             "SELECT last_client_message_at, last_message_at FROM conversations WHERE phone_number = ?",
@@ -298,12 +299,12 @@ async def is_within_24h_window(phone_number: str) -> bool:
         )
         row = await cursor.fetchone()
         if not row:
-            return False
+            return True  # No record (e.g. after redeploy) — try text, Meta 131047 is the fallback
 
         # Use last_client_message_at, fall back to last_message_at for older conversations
         timestamp = row[0] or row[1]
         if not timestamp:
-            return False
+            return True  # No timestamp — try text optimistically
 
         try:
             last_ts = datetime.fromisoformat(timestamp)
