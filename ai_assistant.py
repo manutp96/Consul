@@ -232,15 +232,43 @@ def _serializar_tramite(tramite: dict) -> str:
     return "\n".join(lineas)
 
 
+_CREDENCIAL_KEYWORDS = (
+    "credencial", "credenciales", "contrasena", "contraseña", "password",
+    "usuario cita", "sacar cita pasaporte", "reservar cita pasaporte",
+    "cita previa pasaporte", "citaconsular",
+)
+
+
+def _buscar_tramite_por_id(tramite_id: str) -> dict | None:
+    """Busca un tramite por su ID exacto en la base de datos."""
+    data = get_tramites_data()
+    for categoria in data.get("categorias", []):
+        for tramite in categoria.get("tramites", []):
+            if tramite.get("id") == tramite_id:
+                return tramite
+    return None
+
+
 def build_context_for_query(query: str) -> str:
     """
     Construye contexto de tramites relevantes para inyectar en el prompt.
     Usa busqueda local por keywords en vez del README completo.
     Reduccion de ~233KB a ~5KB por llamada.
+
+    Si la consulta menciona credenciales/contrasena/cita pasaporte, fuerza la
+    inyeccion del tramite 5.10 aunque no gane por score.
     """
     resultados = buscar_tramite_local(query)
+    query_lower = query.lower()
+
+    # Forzar 5.10 si se habla de credenciales o cita de pasaporte
+    fuerza_510 = any(kw in query_lower for kw in _CREDENCIAL_KEYWORDS)
 
     if not resultados or resultados[0]["score"] == 0:
+        if fuerza_510:
+            tramite_510 = _buscar_tramite_por_id("5.10")
+            if tramite_510:
+                return _serializar_tramite(tramite_510)
         # Fallback: listar categorias disponibles
         categorias = get_category_names()
         return (
@@ -250,8 +278,17 @@ def build_context_for_query(query: str) -> str:
         )
 
     bloques = []
+    ids_incluidos = set()
     for r in resultados[:5]:
-        bloques.append(_serializar_tramite(r["tramite"]))
+        tramite = r["tramite"]
+        ids_incluidos.add(tramite.get("id"))
+        bloques.append(_serializar_tramite(tramite))
+
+    # Asegurar que 5.10 esta presente si aplica
+    if fuerza_510 and "5.10" not in ids_incluidos:
+        tramite_510 = _buscar_tramite_por_id("5.10")
+        if tramite_510:
+            bloques.insert(0, _serializar_tramite(tramite_510))
 
     return "\n\n---\n\n".join(bloques)
 
@@ -334,6 +371,63 @@ PREGUNTAS CLAVE QUE SIEMPRE DEBES HACER SEGUN EL CASO:
 - Si el cliente habla de "sacar hora" o "cita" para nacionalidad:
   Primero determinar QUE TIPO de nacionalidad, porque las citas son diferentes
   (Registro Civil vs LMD vs otros)
+
+CALCULO DE CREDENCIALES DE PASAPORTE (tramite 5.10):
+Para reservar cita de pasaporte en el sistema online del consulado hacen falta
+DOS credenciales: un IDENTIFICADOR y una CONTRASENA. La contrasena SIEMPRE se
+calcula con la misma formula. El identificador depende de donde se gestiono el
+pasaporte. El sistema online NO aplica en ciertas situaciones (ver abajo).
+
+CONTRASENA (formula FIJA, no cambia nunca):
+  Inicial primer nombre + Inicial primer apellido + Inicial segundo apellido + DDMMAAAA
+  - Todo en MAYUSCULAS, sin separadores
+  - DDMMAAAA = dia (2 digitos) + mes (2 digitos) + ano (4 digitos)
+  - Si un apellido es COMPUESTO (ej "Torres-Pardo", "De la Fuente"), se toma
+    la inicial de la PRIMERA palabra del compuesto
+  - Ejemplo: Juan Jose Perez Gomez, 15/08/1956 -> JPG15081956
+  - Si el cliente solo tiene UN apellido, consultar al consulado
+
+IDENTIFICADOR (cambia segun donde se gestiono el pasaporte):
+  Formula base: RE + Numero de Matricula Consular + 354
+  - Situacion A - Pasaporte gestionado en Consulado de Montevideo:
+    El identificador completo ya aparece en el CAMPO 11 del pasaporte
+    (ej: RE190012345354). No hay que calcularlo, esta impreso.
+  - Situacion B - Pasaporte gestionado en OTRO consulado, cliente inscrito
+    como residente en Montevideo:
+    El numero de matricula esta en el SELLO que estamparon al inscribirse
+    en el RMC. Se arma manualmente: RE + ese numero + 354.
+
+CUANDO EL SISTEMA ONLINE NO APLICA (hay que mandar mail a
+cog.montevideo.nac@maec.es en lugar de usar credenciales):
+  1. Cliente NO inscrito en el Registro de Matricula Consular (RMC)
+  2. Primera solicitud de pasaporte y aun no recibio usuario por mail del
+     consulado (adjuntar recibo de nacionalidad)
+  3. Pasaporte caducado ANTES del 01/06/2019 (adjuntar selfie con el
+     pasaporte caducado)
+  4. Pasaporte robado o extraviado (adjuntar denuncia policial + cedula)
+
+REQUISITOS PARA USAR EL SISTEMA ONLINE:
+  - Inscrito en el RMC de Montevideo, Y
+  - Pasaporte caduco DESPUES del 01/06/2019 o le quedan menos de 12 meses
+
+DATOS QUE NECESITAS DEL CLIENTE PARA COMPLETAR EL TRAMITE:
+  1. Nombre completo (primer nombre + primer apellido + segundo apellido)
+  2. Fecha de nacimiento (DD/MM/AAAA)
+  3. Numero de pasaporte vigente (por si lo necesitas para otras gestiones)
+  4. Si esta inscrito en el RMC de Montevideo
+  5. Si el pasaporte se gestiono en Montevideo o en otro consulado
+     (para saber si el identificador esta en el campo 11 o hay que armarlo)
+  6. Cuando caduco o caduca el pasaporte (para saber si aplica situacion
+     especial por caducidad previa al 01/06/2019)
+  7. Tipo de tramite: renovacion, primera vez, por perdida, por deterioro
+
+Si el empleado te pide "dame las credenciales de [cliente]" o "calcula la
+contrasena de pasaporte de X": APLICA LA FORMULA de contrasena con los datos
+que tengas. Si falta algun dato (ej: segundo apellido), pedilo explicitamente
+antes de calcular. Para el identificador, aclara que depende de la situacion
+A o B y que en situacion A viene impreso en el campo 11 del pasaporte. No
+digas que no tenes acceso a bases de datos: la contrasena se CALCULA, no se
+consulta.
 
 FORMATO DE TU RESPUESTA:
 Genera SOLO el texto que el empleado enviaria al cliente. No incluyas explicaciones,
@@ -460,6 +554,45 @@ async def procesar_mensaje_natural(mensaje: str, usuario: str) -> dict:
         client = anthropic.AsyncAnthropic(api_key=api_key)
 
         system = get_system_prompt()
+
+        # Inyectar trámite 5.10 + fórmula si el mensaje habla de credenciales/cita de pasaporte
+        mensaje_lower = mensaje.lower()
+        if any(kw in mensaje_lower for kw in _CREDENCIAL_KEYWORDS):
+            tramite_510 = _buscar_tramite_por_id("5.10")
+            if tramite_510:
+                system += "\n\nCONTEXTO FORZADO - TRAMITE 5.10 (Cita Previa Pasaporte):\n"
+                system += _serializar_tramite(tramite_510)
+            system += """
+
+CALCULO DE CREDENCIALES DE PASAPORTE (tramite 5.10):
+Cuando el empleado te pida "dame las credenciales del cliente X" o similar,
+DEBES calcular la contrasena con la formula del tramite 5.10. NO respondas
+que no tenes acceso a bases de datos: la contrasena se CALCULA.
+
+CONTRASENA (formula fija):
+  Inicial primer nombre + Inicial primer apellido + Inicial segundo apellido + DDMMAAAA
+  - Todo MAYUSCULAS, sin separadores
+  - DDMMAAAA = dia (2d) + mes (2d) + ano (4d)
+  - Apellido compuesto (ej Torres-Pardo): inicial de la PRIMERA palabra
+  - Ejemplo: Juan Jose Perez Gomez, 15/08/1956 -> JPG15081956
+
+IDENTIFICADOR: RE + Numero de Matricula Consular + 354
+  - Situacion A (pasaporte gestionado en Montevideo): esta en el CAMPO 11
+    del pasaporte, ya armado
+  - Situacion B (pasaporte gestionado en otro consulado, cliente inscrito
+    en RMC Montevideo): armar con el numero del sello del RMC
+
+DATOS QUE NECESITAS PARA CALCULAR: primer nombre, primer apellido, segundo
+apellido, fecha de nacimiento. Si falta alguno (ej: segundo apellido), pedilo
+explicitamente. No inventes iniciales.
+
+NO APLICA el sistema online (hay que mandar mail a cog.montevideo.nac@maec.es) si:
+  - No inscrito en RMC
+  - Primera vez sin usuario todavia
+  - Pasaporte caducado ANTES del 01/06/2019
+  - Pasaporte robado o extraviado
+"""
+
         system += """
 
 INSTRUCCIONES ADICIONALES PARA MENSAJES CONVERSACIONALES:
