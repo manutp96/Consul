@@ -8,6 +8,7 @@ Sistema de feedback con reacciones para auto-correccion.
 """
 
 import asyncio
+import io
 import logging
 import os
 import queue
@@ -766,8 +767,17 @@ class ConsularBot(discord.Client):
     # WHATSAPP → DISCORD
     # ==================================================================
 
-    async def enviar_mensaje_whatsapp(self, datos: dict, channel_id: int = 0):
+    async def enviar_mensaje_whatsapp(
+        self,
+        datos: dict,
+        channel_id: int = 0,
+        media_bytes: bytes | None = None,
+        media_mime: str | None = None,
+        media_filename: str | None = None,
+        media_type: str | None = None,
+    ):
         """Reenvía un mensaje de WhatsApp a Discord con sugerencia de IA.
+        Si el mensaje trae media (audio/imagen/video/documento), se adjunta al canal.
         If the assigned channel was deleted, creates a new one automatically."""
         sender = datos.get("sender", "Desconocido")
         sender_name = datos.get("sender_name", "")
@@ -819,7 +829,37 @@ class ConsularBot(discord.Client):
             )
             embed.set_footer(text=f"Responde a este mensaje para contestarle al cliente por WhatsApp")
 
-            msg = await channel.send(embed=embed)
+            # Si hay media (audio/imagen/video/documento), preparar el archivo adjunto
+            discord_file = None
+            if media_bytes:
+                ext_map = {
+                    "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a",
+                    "audio/aac": "aac", "audio/amr": "amr", "audio/webm": "webm",
+                    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+                    "image/gif": "gif",
+                    "video/mp4": "mp4", "video/3gpp": "3gp",
+                    "application/pdf": "pdf",
+                }
+                mime_key = (media_mime or "").split(";")[0].strip()
+                ext = ext_map.get(mime_key, "bin")
+                default_names = {
+                    "audio": f"audio.{ext}",
+                    "voice": f"audio.{ext}",
+                    "image": f"imagen.{ext}",
+                    "video": f"video.{ext}",
+                    "document": media_filename or f"documento.{ext}",
+                    "sticker": f"sticker.{ext}",
+                }
+                filename = media_filename or default_names.get(media_type or "", f"media.{ext}")
+                try:
+                    discord_file = discord.File(io.BytesIO(media_bytes), filename=filename)
+                except Exception as e:
+                    log.error(f"Error creando discord.File: {e}")
+
+            if discord_file:
+                msg = await channel.send(embed=embed, file=discord_file)
+            else:
+                msg = await channel.send(embed=embed)
 
             # Track this channel as a WA channel
             self._wa_channel_ids.add(channel.id)

@@ -126,6 +126,45 @@ async def health():
 # WHATSAPP CLOUD API (Meta)
 # ============================================================================
 
+async def descargar_media_meta(media_id: str):
+    """Descarga binario de un media de WhatsApp via Meta Cloud API.
+
+    Meta requiere 2 pasos:
+      1) GET /v25.0/{MEDIA_ID} con Bearer -> retorna JSON con 'url' y 'mime_type'
+      2) GET {url} con el mismo Bearer -> retorna los bytes
+
+    Retorna (bytes, mime_type) o (None, None) si falla.
+    """
+    import httpx
+
+    if not WHATSAPP_TOKEN or not media_id:
+        return None, None
+
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r1 = await client.get(
+                f"https://graph.facebook.com/v25.0/{media_id}",
+                headers=headers,
+            )
+            if r1.status_code != 200:
+                log.error(f"Meta media lookup fallo ({r1.status_code}) id={media_id}")
+                return None, None
+            info = r1.json()
+            url = info.get("url")
+            mime = info.get("mime_type", "")
+            if not url:
+                return None, None
+            r2 = await client.get(url, headers=headers)
+            if r2.status_code != 200:
+                log.error(f"Meta media download fallo ({r2.status_code}) id={media_id}")
+                return None, None
+            return r2.content, mime
+    except Exception as e:
+        log.error(f"Error descargando media {media_id}: {e}")
+        return None, None
+
+
 @app.get("/webhook/meta")
 async def meta_webhook_verify(request: Request):
     """Verificacion de webhook de Meta (GET). Meta envia esto al configurar el webhook."""
@@ -169,6 +208,21 @@ async def meta_webhook_receive(request: Request):
         # Obtener nombre del contacto si esta disponible
         contacts = value.get("contacts", [])
         sender_name = contacts[0].get("profile", {}).get("name", "") if contacts else ""
+
+        # Extraer media para tipos no-texto (audio, image, video, document, sticker, voice)
+        media_id = None
+        media_mime = None
+        media_filename = None
+        if msg_type in ("audio", "image", "video", "document", "voice", "sticker"):
+            media_obj = msg.get(msg_type, {})
+            if isinstance(media_obj, dict):
+                media_id = media_obj.get("id")
+                media_mime = media_obj.get("mime_type", "")
+                media_filename = media_obj.get("filename")  # solo para document
+                # Si hay caption (image/video/document), usarlo como texto
+                caption = media_obj.get("caption", "")
+                if caption:
+                    texto = caption
 
         if not texto:
             texto = f"[Mensaje de tipo: {msg_type}]"
@@ -222,7 +276,14 @@ async def meta_webhook_receive(request: Request):
         # 5. Guardar sugerencia del bot
         await conversation_db.add_message(conv_id, "bot", sugerencia)
 
-        # 6. Reenviar a Discord (canal asignado)
+        # 6. Descargar media desde Meta si corresponde (para adjuntarlo en Discord)
+        media_bytes = None
+        if media_id:
+            media_bytes, fetched_mime = await descargar_media_meta(media_id)
+            if fetched_mime:
+                media_mime = fetched_mime
+
+        # 7. Reenviar a Discord (canal asignado)
         if _discord_bot and channel_id:
             try:
                 await _discord_bot.enviar_mensaje_whatsapp({
@@ -231,7 +292,11 @@ async def meta_webhook_receive(request: Request):
                     "texto": texto,
                     "sugerencia": sugerencia,
                     "timestamp": datetime.now().strftime("%H:%M:%S"),
-                }, channel_id=channel_id)
+                }, channel_id=channel_id,
+                    media_bytes=media_bytes,
+                    media_mime=media_mime,
+                    media_filename=media_filename,
+                    media_type=msg_type)
                 log.info(f"Mensaje reenviado a Discord canal {channel_id}")
             except Exception as e:
                 log.error(f"Error reenviando a Discord: {e}")
